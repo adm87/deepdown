@@ -2,8 +2,8 @@
     "activeFile": "assets/tilemaps/sample-map.tmx",
     "expandedProjectPaths": [
         "assets/tilemaps",
-        ".",
         "assets",
+        ".",
         "assets/tilesheets"
     ],
     "fileStates": {
