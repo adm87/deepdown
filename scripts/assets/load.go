@@ -10,15 +10,15 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/adm87/utilities/hashset"
+	"github.com/adm87/utilities/hash"
 	"github.com/adm87/utilities/linq"
 )
 
 var (
-	cache       = make(map[AssetHandle]any)      // cache stores loaded assets mapped by their handles.
-	filesystems = make(map[string]fs.FS)         // filesystems maps root paths to their corresponding filesystems.
-	loading     = make(hashset.Set[AssetHandle]) // loading tracks assets currently being loaded to prevent duplicate loads.
-	mu          sync.RWMutex                     // mu protects access to the cache and filesystems maps.
+	filesystems = make(map[string]fs.FS)      // filesystems maps root paths to their corresponding filesystems.
+	cache       = make(map[AssetHandle]any)   // cache stores loaded assets mapped by their handles.
+	loading     = make(hash.Set[AssetHandle]) // loading tracks assets currently being loaded to prevent duplicate loads.
+	mu          sync.RWMutex                  // mu protects access to the cache and filesystems maps.
 )
 
 // Get retrieves a loaded asset by its handle and asserts it to the specified type T.

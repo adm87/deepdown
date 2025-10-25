@@ -1,10 +1,11 @@
 package collision
 
-import "github.com/adm87/deepdown/scripts/geom"
+import (
+	"github.com/adm87/deepdown/scripts/geom"
+)
 
 type AABB interface {
-	Min() (x, y float32)
-	Max() (x, y float32)
+	Bounds() (minX, minY, maxX, maxY float32)
 }
 
 type Collider interface {
@@ -14,9 +15,19 @@ type Collider interface {
 }
 
 type ColliderInfo struct {
+	id uint32
+
 	Layer     Layer
-	Behaviour Behaviour
+	Type      Type
 	Detection Detection
+
+	Offset [2]float32
+}
+
+var nextColliderID uint32
+
+func (ci ColliderInfo) ID() uint32 {
+	return ci.id
 }
 
 // =========== BoxCollider ==========
@@ -27,12 +38,15 @@ type BoxCollider struct {
 }
 
 func NewBoxCollider(x, y, width, height float32) *BoxCollider {
+	nextColliderID++
 	return &BoxCollider{
 		Rectangle: geom.NewRectangle(x, y, width, height),
 		ColliderInfo: ColliderInfo{
+			id:        nextColliderID,
 			Layer:     DefaultLayer,
-			Behaviour: StaticBehaviour,
+			Type:      Static,
 			Detection: DiscreteDetection,
+			Offset:    [2]float32{0, 0},
 		},
 	}
 }
@@ -41,19 +55,22 @@ func (bc *BoxCollider) Info() ColliderInfo {
 	return bc.ColliderInfo
 }
 
-func (bc *BoxCollider) WithLayer(layer Layer) *BoxCollider {
+func (bc *BoxCollider) SetLayer(layer Layer) {
 	bc.ColliderInfo.Layer = layer
-	return bc
 }
 
-func (bc *BoxCollider) WithBehaviour(behaviour Behaviour) *BoxCollider {
-	bc.ColliderInfo.Behaviour = behaviour
-	return bc
+func (bc *BoxCollider) SetType(colliderType Type) {
+	bc.ColliderInfo.Type = colliderType
 }
 
-func (bc *BoxCollider) WithDetection(detection Detection) *BoxCollider {
+func (bc *BoxCollider) SetDetection(detection Detection) {
 	bc.ColliderInfo.Detection = detection
-	return bc
+}
+
+func (bc *BoxCollider) Bounds() (minX, minY, maxX, maxY float32) {
+	minX, minY = bc.Rectangle.Min()
+	maxX, maxY = bc.Rectangle.Max()
+	return minX + bc.Offset[0], minY + bc.Offset[1], maxX + bc.Offset[0], maxY + bc.Offset[1]
 }
 
 // =========== PolygonCollider ==========
@@ -64,12 +81,15 @@ type PolygonCollider struct {
 }
 
 func NewPolygonCollider(x, y float32, points []float32) *PolygonCollider {
+	nextColliderID++
 	return &PolygonCollider{
 		Polygon: geom.NewPolygon(x, y, points),
 		ColliderInfo: ColliderInfo{
+			id:        nextColliderID,
 			Layer:     DefaultLayer,
-			Behaviour: StaticBehaviour,
+			Type:      Static,
 			Detection: DiscreteDetection,
+			Offset:    [2]float32{0, 0},
 		},
 	}
 }
@@ -78,17 +98,20 @@ func (pc *PolygonCollider) Info() ColliderInfo {
 	return pc.ColliderInfo
 }
 
-func (pc *PolygonCollider) WithLayer(layer Layer) *PolygonCollider {
+func (pc *PolygonCollider) SetLayer(layer Layer) {
 	pc.ColliderInfo.Layer = layer
-	return pc
 }
 
-func (pc *PolygonCollider) WithBehaviour(behaviour Behaviour) *PolygonCollider {
-	pc.ColliderInfo.Behaviour = behaviour
-	return pc
+func (pc *PolygonCollider) SetType(colliderType Type) {
+	pc.ColliderInfo.Type = colliderType
 }
 
-func (pc *PolygonCollider) WithDetection(detection Detection) *PolygonCollider {
+func (pc *PolygonCollider) SetDetection(detection Detection) {
 	pc.ColliderInfo.Detection = detection
-	return pc
+}
+
+func (pc *PolygonCollider) Bounds() (minX, minY, maxX, maxY float32) {
+	minX, minY = pc.Polygon.Min()
+	maxX, maxY = pc.Polygon.Max()
+	return minX + pc.Offset[0], minY + pc.Offset[1], maxX + pc.Offset[0], maxY + pc.Offset[1]
 }

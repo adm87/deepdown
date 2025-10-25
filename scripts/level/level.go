@@ -2,16 +2,16 @@ package level
 
 import (
 	"image"
-	"log/slog"
+	"image/color"
 	"math"
-	"sync"
 
 	"github.com/adm87/deepdown/scripts/assets"
 	"github.com/adm87/deepdown/scripts/camera"
 	"github.com/adm87/deepdown/scripts/collision"
 	"github.com/adm87/deepdown/scripts/deepdown"
 	"github.com/adm87/tiled"
-	"github.com/adm87/utilities/hashgrid"
+	"github.com/adm87/tiled/tilemap"
+	"github.com/adm87/utilities/hash"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 )
@@ -19,77 +19,86 @@ import (
 type Level struct {
 	ctx deepdown.Context
 
-	tilemap *tiled.Tilemap
-	world   *collision.World
+	tilemap *tilemap.Map
+	camera  *camera.Camera
+
+	world  *collision.World
+	player *collision.BoxCollider
 
 	op ebiten.DrawImageOptions
 }
 
-func NewLevel(ctx deepdown.Context) *Level {
+func NewLevel(ctx deepdown.Context, targetWidth, targetHeight float32) *Level {
 	return &Level{
 		ctx:     ctx,
-		tilemap: tiled.NewTilemap(),
+		tilemap: tilemap.NewMap(),
+		camera:  camera.NewCamera(0, 0, targetWidth, targetHeight),
 		world:   collision.NewWorld(ctx),
 		op:      ebiten.DrawImageOptions{},
 	}
 }
 
+func (l *Level) Camera() *camera.Camera {
+	return l.camera
+}
+
 func (l *Level) Bounds() (minX, minY, maxX, maxY int32) {
-	return l.tilemap.Bounds()
+	return 0, 0, 0, 0
 }
 
 func (l *Level) SetTmx(tmx *tiled.Tmx) error {
 	l.tilemap.SetTmx(tmx)
-	return l.buildLevel()
-}
+	l.tilemap.Frame().Set(l.camera.Viewport())
 
-func (l *Level) Draw(screen *ebiten.Image, camera *camera.Camera) {
-	minX, minY, maxX, maxY := camera.Viewport()
-
-	itr, err := l.tilemap.GetTiles(int32(minX), int32(minY), int32(maxX), int32(maxY))
+	c, err := BuildLevel(l.ctx.Logger(), l.world, tmx)
 	if err != nil {
-		l.ctx.Logger().Error("error", slog.Any("err", err))
-		return
+		return err
 	}
 
-	// TASK: Batch tiles to reduce draw calls
+	l.player = c.(*collision.BoxCollider)
+	return nil
+}
+
+func (l *Level) Update() error {
+	if ebiten.IsKeyPressed(ebiten.KeyW) || ebiten.IsKeyPressed(ebiten.KeyUp) {
+		l.player.Y -= 1
+	}
+	if ebiten.IsKeyPressed(ebiten.KeyS) || ebiten.IsKeyPressed(ebiten.KeyDown) {
+		l.player.Y += 1
+	}
+	if ebiten.IsKeyPressed(ebiten.KeyA) || ebiten.IsKeyPressed(ebiten.KeyLeft) {
+		l.player.X -= 1
+	}
+	if ebiten.IsKeyPressed(ebiten.KeyD) || ebiten.IsKeyPressed(ebiten.KeyRight) {
+		l.player.X += 1
+	}
+
+	l.world.UpdateCollider(l.player, hash.NoGridPadding)
+
+	l.camera.X = l.player.X + l.player.Width/2
+	l.camera.Y = l.player.Y + l.player.Height/2
+
+	l.tilemap.Frame().Set(l.camera.Viewport())
+
+	l.world.CheckCollisions()
+	return nil
+}
+
+func (l *Level) Draw(screen *ebiten.Image) {
+	l.tilemap.BufferFrame()
+
+	mat := l.camera.Matrix()
+	itr := l.tilemap.Itr()
 
 	for tiles := itr.Next(); tiles != nil; tiles = itr.Next() {
-		l.drawTiles(screen, camera, tiles)
+		l.DrawTileBatch(screen, tiles, mat)
 	}
 
-	keys := l.world.Grid.Keys()
-	for _, k := range keys {
-		x, y := hashgrid.DecodeGridKey(k)
-		l.drawWorldCell(screen, camera, x, y, collision.GridCellSize)
-	}
+	l.DrawCollisionCells(screen, mat)
+	l.DrawPotentialCollisions(screen, mat)
 }
 
-func (l *Level) drawWorldCell(screen *ebiten.Image, camera *camera.Camera, x, y int32, cellSize float32) {
-	path := vector.Path{}
-	view := camera.Matrix()
-
-	minX, minY := view.Apply(float64(x)*float64(cellSize), float64(y)*float64(cellSize))
-	maxX, maxY := view.Apply(float64(x+1)*float64(cellSize), float64(y+1)*float64(cellSize))
-
-	path.MoveTo(float32(minX), float32(minY))
-	path.LineTo(float32(maxX), float32(minY))
-	path.LineTo(float32(maxX), float32(maxY))
-	path.LineTo(float32(minX), float32(maxY))
-	path.Close()
-
-	cs := ebiten.ColorScale{}
-	cs.Scale(1, 0, 0, 1)
-	cs.ScaleAlpha(0.5)
-	vector.StrokePath(screen, &path, &vector.StrokeOptions{
-		Width: 1.0,
-	}, &vector.DrawPathOptions{
-		ColorScale: cs,
-	})
-
-}
-
-func (l *Level) drawTiles(screen *ebiten.Image, camera *camera.Camera, tiles []tiled.TileData) {
+func (l *Level) DrawTileBatch(screen *ebiten.Image, tiles []tilemap.Data, mat ebiten.GeoM) {
 	for i := range tiles {
 		tileset, err := l.tilemap.GetTileset(tiles[i].TsIdx)
 		if err != nil {
@@ -127,31 +136,61 @@ func (l *Level) drawTiles(screen *ebiten.Image, camera *camera.Camera, tiles []t
 		}
 
 		l.op.GeoM.Translate(distX, distY)
-		l.op.GeoM.Concat(camera.Matrix())
+		l.op.GeoM.Concat(mat)
 
 		screen.DrawImage(img.SubImage(srcRect).(*ebiten.Image), &l.op)
 	}
 }
 
-func (l *Level) buildLevel() error {
-	errch := make(chan error)
+func (l *Level) DrawCollisionCells(screen *ebiten.Image, mat ebiten.GeoM) {
+	cells := l.world.GetCells()
+	width, height := l.world.GetCellSize()
+	path := vector.Path{}
 
-	wg := sync.WaitGroup{}
-	wg.Add(1)
+	for i := range cells {
+		x, y := hash.DecodeGridKey(cells[i])
 
-	go func() {
-		defer wg.Done()
-		if err := BuildCollision(l.ctx.Logger(), l.world, tiled.ObjectGroupByName(l.tilemap.Tmx, "WorldCollision")); err != nil {
-			l.ctx.Logger().Error("error", slog.Any("err", err))
-			errch <- err
-			return
-		}
-	}()
+		minX, minY := mat.Apply(float64(x)*float64(width), float64(y)*float64(height))
+		maxX, maxY := mat.Apply(float64(x)*float64(width)+float64(width), float64(y)*float64(height)+float64(height))
 
-	// TASK: Build other systems (e.g. spawn points, triggers, etc.)
+		path.MoveTo(float32(minX), float32(minY))
+		path.LineTo(float32(maxX), float32(minY))
+		path.LineTo(float32(maxX), float32(maxY))
+		path.LineTo(float32(minX), float32(maxY))
+		path.LineTo(float32(minX), float32(minY))
+	}
 
-	wg.Wait()
+	op := &vector.DrawPathOptions{}
+	op.ColorScale.ScaleWithColor(color.RGBA{R: 255, A: 255})
 
-	close(errch)
-	return <-errch
+	vector.StrokePath(screen, &path, &vector.StrokeOptions{
+		Width: 1,
+	}, op)
+}
+
+func (l *Level) DrawPotentialCollisions(screen *ebiten.Image, mat ebiten.GeoM) {
+	minX, minY, maxX, maxY := l.player.Bounds()
+
+	colliders := l.world.Query(minX, minY, maxX, maxY)
+	path := vector.Path{}
+
+	for i := range colliders {
+		cMinX, cMinY, cMaxX, cMaxY := colliders[i].Bounds()
+
+		minX, minY := mat.Apply(float64(cMinX), float64(cMinY))
+		maxX, maxY := mat.Apply(float64(cMaxX), float64(cMaxY))
+
+		path.MoveTo(float32(minX), float32(minY))
+		path.LineTo(float32(maxX), float32(minY))
+		path.LineTo(float32(maxX), float32(maxY))
+		path.LineTo(float32(minX), float32(maxY))
+		path.LineTo(float32(minX), float32(minY))
+	}
+
+	op := &vector.DrawPathOptions{}
+	op.ColorScale.ScaleWithColor(color.RGBA{G: 255, A: 255})
+
+	vector.StrokePath(screen, &path, &vector.StrokeOptions{
+		Width: 1,
+	}, op)
 }

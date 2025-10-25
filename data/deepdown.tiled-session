@@ -1,25 +1,63 @@
 {
+    "Map/SizeTest": {
+        "height": 4300,
+        "width": 2
+    },
     "activeFile": "assets/tilemaps/sample-map.tmx",
     "expandedProjectPaths": [
         "assets/tilemaps",
+        "assets/tilesheets",
         "assets",
-        ".",
-        "assets/tilesheets"
+        "."
     ],
     "fileStates": {
+        "assets/tilemaps/sample-map-b.tmx": {
+            "scale": 5.537708333333333,
+            "selectedLayer": 0,
+            "viewCenter": {
+                "x": 122.70418720138446,
+                "y": 94.35310936383132
+            }
+        },
         "assets/tilemaps/sample-map.tmx": {
-            "scale": 4,
+            "expandedObjectLayers": [
+                2
+            ],
+            "scale": 4.15328125,
             "selectedLayer": 1,
             "viewCenter": {
-                "x": 155.625,
-                "y": 111.625
+                "x": 159.9939806628795,
+                "y": 95.9482337007637
+            }
+        },
+        "assets/tilemaps/sample-mapB.tmx": {
+            "scale": 153.06875,
+            "selectedLayer": 0,
+            "viewCenter": {
+                "x": 3.014985096566085,
+                "y": 3.8642766730635745
+            }
+        },
+        "assets/tilemaps/sample-sheet.tsx": {
+            "scaleInDock": 1
+        },
+        "assets/tilesheets/sample-map-b.tmx": {
+            "scale": 5.537708333333333,
+            "selectedLayer": 0,
+            "viewCenter": {
+                "x": 119.99548549715963,
+                "y": 80.08728038824725
             }
         },
         "assets/tilesheets/sample-sheet.tsx": {
             "scaleInDock": 4,
-            "scaleInEditor": 1
+            "scaleInEditor": 11
         }
     },
+    "last.externalTilesetPath": "/home/adm87/Projects/DeepDown/deepdown/data/assets/tilesheets",
+    "map.lastUsedFormat": "tmx",
+    "map.tileHeight": 8,
+    "map.tileWidth": 8,
     "openFiles": [
         "assets/tilemaps/sample-map.tmx",
         "assets/tilesheets/sample-sheet.tsx"
@@ -27,6 +65,9 @@
     "project": "deepdown.tiled-project",
     "recentFiles": [
         "assets/tilesheets/sample-sheet.tsx",
-        "assets/tilemaps/sample-map.tmx"
+        "assets/tilemaps/sample-map.tmx",
+        "assets/tilemaps/sample-mapB.tmx",
+        "assets/tilemaps/sample-map-b.tmx",
+        "assets/tilesheets/sample-map-b.tmx"
     ]
 }

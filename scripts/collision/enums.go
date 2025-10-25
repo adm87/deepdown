@@ -50,45 +50,48 @@ func (l Layer) IsValid() bool {
 	_, ok := nameByLayer[l]
 	return ok
 }
+
 func NameByLayer(layer Layer) (string, bool) {
 	name, ok := nameByLayer[layer]
 	return name, ok
 }
 
-// =========== Behaviour ==========
+// =========== Types ==========
 
-// Behaviour represents the collision behavior type for a collider.
+// Type represents the collision behavior type for a collider.
 // It defines how the collider interacts with other colliders in the physics simulation.
 //
-// Types:
-//   - StaticCollision: Immovable objects (e.g., walls, floors).
-//   - DynamicCollision: Movable objects affected by physics (e.g., players, enemies).
-//   - SensorCollision: Trigger volumes that detect overlaps but do not cause physical responses (e.g., pickups, zones).
-type Behaviour uint8
+// Type:
+//   - Ignore: No collision behaviour, ignored in simulation.
+//   - Static: Immovable objects (e.g., walls, floors).
+//   - Dynamic: Movable objects affected by physics (e.g., players, enemies).
+//   - Trigger: Trigger volumes that detect overlaps but do not cause physical responses (e.g., pickups, zones).
+type Type uint8
 
 const (
-	StaticBehaviour  Behaviour = iota // Immovable object (e.g., walls, floors)
-	DynamicBehaviour                  // Movable object affected by physics (e.g., players, enemies)
-	SensorBehaviour                   // Trigger volume, detects overlaps but no physical response (e.g., pickups, zones)
+	Ignore  Type = 0    // No collision behaviour, ignored in simulation
+	Static  Type = iota // Immovable object (e.g., walls, floors)
+	Dynamic             // Movable object affected by physics (e.g., players, enemies)
+	Trigger             // Trigger volume, detects overlaps but no physical response (e.g., pickups, zones)
 )
 
 // String returns the string representation of the Behaviour.
-func (ct Behaviour) String() string {
+func (ct Type) String() string {
 	switch ct {
-	case StaticBehaviour:
+	case Static:
 		return "Static"
-	case DynamicBehaviour:
+	case Dynamic:
 		return "Dynamic"
-	case SensorBehaviour:
-		return "Sensor"
+	case Trigger:
+		return "Trigger"
 	default:
 		return "Unknown"
 	}
 }
 
 // IsValid reports whether the Behaviour value is a valid collision type.
-func (ct Behaviour) IsValid() bool {
-	return ct <= SensorBehaviour
+func (ct Type) IsValid() bool {
+	return ct <= Trigger
 }
 
 // =========== Detection ==========
