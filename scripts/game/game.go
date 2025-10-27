@@ -16,7 +16,7 @@ const (
 	TargetWidth  int32 = 1280
 	TargetHeight int32 = 720
 
-	Scale float32 = 0.2
+	Scale float64 = 0.15
 )
 
 type Game struct {
@@ -27,8 +27,7 @@ type Game struct {
 
 func NewGame(ctx deepdown.Context) *Game {
 	assets.MustLoad(
-		data.Img10x10,
-		data.SampleMap,
+		data.GymCollision,
 		data.SampleSheet,
 		data.TilemapPacked,
 	)
@@ -36,11 +35,11 @@ func NewGame(ctx deepdown.Context) *Game {
 	ebiten.SetWindowTitle(WindowTitle)
 	ebiten.SetWindowSize(int(TargetWidth), int(TargetHeight))
 
-	width := float32(TargetWidth) * Scale
-	height := float32(TargetHeight) * Scale
+	width := float32(TargetWidth) * float32(Scale)
+	height := float32(TargetHeight) * float32(Scale)
 
 	lvl := level.NewLevel(ctx, width, height)
-	lvl.SetTmx(assets.MustGet[*tiled.Tmx](data.SampleMap))
+	lvl.SetTmx(assets.MustGet[*tiled.Tmx](data.GymCollision))
 
 	return &Game{
 		ctx: ctx,
@@ -61,5 +60,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
-	return int(float32(TargetWidth) * Scale), int(float32(TargetHeight) * Scale)
+	width := int(float64(TargetWidth) * Scale)
+	height := int(float64(TargetHeight) * Scale)
+	return width, height
 }

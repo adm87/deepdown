@@ -1,6 +1,7 @@
 package level
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 	"math"
@@ -13,6 +14,7 @@ import (
 	"github.com/adm87/tiled/tilemap"
 	"github.com/adm87/utilities/hash"
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 )
 
@@ -29,12 +31,13 @@ type Level struct {
 }
 
 func NewLevel(ctx deepdown.Context, targetWidth, targetHeight float32) *Level {
+	world := collision.NewWorld(ctx)
 	return &Level{
 		ctx:     ctx,
 		tilemap: tilemap.NewMap(),
 		camera:  camera.NewCamera(0, 0, targetWidth, targetHeight),
-		world:   collision.NewWorld(ctx),
 		op:      ebiten.DrawImageOptions{},
+		world:   world,
 	}
 }
 
@@ -56,35 +59,60 @@ func (l *Level) SetTmx(tmx *tiled.Tmx) error {
 	}
 
 	l.player = c.(*collision.BoxCollider)
-	return nil
-}
-
-func (l *Level) Update() error {
-	if ebiten.IsKeyPressed(ebiten.KeyW) || ebiten.IsKeyPressed(ebiten.KeyUp) {
-		l.player.Y -= 1
-	}
-	if ebiten.IsKeyPressed(ebiten.KeyS) || ebiten.IsKeyPressed(ebiten.KeyDown) {
-		l.player.Y += 1
-	}
-	if ebiten.IsKeyPressed(ebiten.KeyA) || ebiten.IsKeyPressed(ebiten.KeyLeft) {
-		l.player.X -= 1
-	}
-	if ebiten.IsKeyPressed(ebiten.KeyD) || ebiten.IsKeyPressed(ebiten.KeyRight) {
-		l.player.X += 1
-	}
-
-	l.world.UpdateCollider(l.player, hash.NoGridPadding)
 
 	l.camera.X = l.player.X + l.player.Width/2
 	l.camera.Y = l.player.Y + l.player.Height/2
 
-	l.tilemap.Frame().Set(l.camera.Viewport())
+	l.world.OnEnter = l.OnCollision
+	l.world.OnStay = l.OnCollision
 
+	return nil
+}
+
+func (l *Level) Update() error {
+	l.player.Velocity[1] += 0.5 // Gravity
+
+	// Early Update Phase
+	if ebiten.IsKeyPressed(ebiten.KeyA) || ebiten.IsKeyPressed(ebiten.KeyLeft) {
+		l.player.Velocity[0] -= 0.2
+	}
+	if ebiten.IsKeyPressed(ebiten.KeyD) || ebiten.IsKeyPressed(ebiten.KeyRight) {
+		l.player.Velocity[0] += 0.2
+	}
+	if ebiten.IsKeyPressed(ebiten.KeyW) || ebiten.IsKeyPressed(ebiten.KeyUp) {
+		l.player.Velocity[1] -= 1
+	}
+
+	if ebiten.IsKeyPressed(ebiten.KeySpace) {
+		l.player.X = l.camera.X - l.player.Width/2
+		l.player.Y = l.camera.Y - l.player.Height/2
+		l.player.Velocity[0] = 0
+		l.player.Velocity[1] = 0
+	}
+
+	// Fixed Update Phase - TODO implement fixed timestep
+	l.world.UpdateColliders()
 	l.world.CheckCollisions()
+
+	// Late Update Phase
+	l.camera.X = l.player.X + l.player.Width/2
+	l.camera.Y = l.player.Y + l.player.Height/2
+
+	maxX := l.tilemap.Tmx.Width * l.tilemap.Tmx.TileWidth
+	maxY := l.tilemap.Tmx.Height * l.tilemap.Tmx.TileHeight
+
+	l.camera.X = float32(math.Max(float64(l.camera.Width)/2, float64(l.camera.X)))
+	l.camera.Y = float32(math.Max(float64(l.camera.Height)/2, float64(l.camera.Y)))
+	l.camera.X = float32(math.Min(float64(maxX)-float64(l.camera.Width)/2, float64(l.camera.X)))
+	l.camera.Y = float32(math.Min(float64(maxY)-float64(l.camera.Height)/2, float64(l.camera.Y)))
+
+	l.player.Velocity[0] *= 0.8
+	l.player.Velocity[1] *= 0.9
 	return nil
 }
 
 func (l *Level) Draw(screen *ebiten.Image) {
+	l.tilemap.Frame().Set(l.camera.Viewport())
 	l.tilemap.BufferFrame()
 
 	mat := l.camera.Matrix()
@@ -94,8 +122,11 @@ func (l *Level) Draw(screen *ebiten.Image) {
 		l.DrawTileBatch(screen, tiles, mat)
 	}
 
-	l.DrawCollisionCells(screen, mat)
+	// l.DrawCollisionCells(screen, mat)
 	l.DrawPotentialCollisions(screen, mat)
+
+	msg := fmt.Sprintf("Velocity X: %.2f Y: %.2f", l.player.Velocity[0], l.player.Velocity[1])
+	ebitenutil.DebugPrintAt(screen, msg, 10, 10)
 }
 
 func (l *Level) DrawTileBatch(screen *ebiten.Image, tiles []tilemap.Data, mat ebiten.GeoM) {
@@ -143,7 +174,7 @@ func (l *Level) DrawTileBatch(screen *ebiten.Image, tiles []tilemap.Data, mat eb
 }
 
 func (l *Level) DrawCollisionCells(screen *ebiten.Image, mat ebiten.GeoM) {
-	cells := l.world.GetCells()
+	cells := l.world.QueryCells(l.player.Bounds())
 	width, height := l.world.GetCellSize()
 	path := vector.Path{}
 

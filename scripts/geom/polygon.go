@@ -23,6 +23,10 @@ func NewPolygon(x, y float32, points []float32) Polygon {
 	}
 }
 
+func (p *Polygon) Points() []float32 {
+	return p.points
+}
+
 func (p *Polygon) VertexCount() int {
 	return len(p.points) / 2
 }

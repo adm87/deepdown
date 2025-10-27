@@ -1,5 +1,30 @@
 package collision
 
+// =========== Shape Types ==========
+
+type Shape uint8
+
+const (
+	Box Shape = iota
+	Polygon
+	Triangle
+)
+
+func (st Shape) String() string {
+	switch st {
+	case Box:
+		return "Box"
+	case Polygon:
+		return "Polygon"
+	default:
+		return "Unknown"
+	}
+}
+
+func (st Shape) IsValid() bool {
+	return st <= Polygon
+}
+
 // =========== Layer ==========
 
 // Layer represents a collision layer.

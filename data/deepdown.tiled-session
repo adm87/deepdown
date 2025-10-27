@@ -5,12 +5,20 @@
     },
     "activeFile": "assets/tilemaps/sample-map.tmx",
     "expandedProjectPaths": [
-        "assets/tilemaps",
         "assets/tilesheets",
         "assets",
+        "assets/tilemaps",
         "."
     ],
     "fileStates": {
+        "assets/tilemaps/gym_slopes.tmx": {
+            "scale": 6.551041666666666,
+            "selectedLayer": 2,
+            "viewCenter": {
+                "x": 120.05724280489744,
+                "y": 80.0636031165527
+            }
+        },
         "assets/tilemaps/sample-map-b.tmx": {
             "scale": 5.537708333333333,
             "selectedLayer": 0,
@@ -26,8 +34,8 @@
             "scale": 4.15328125,
             "selectedLayer": 1,
             "viewCenter": {
-                "x": 159.9939806628795,
-                "y": 95.9482337007637
+                "x": 159.51243369323953,
+                "y": 95.94823370076371
             }
         },
         "assets/tilemaps/sample-mapB.tmx": {
@@ -64,8 +72,8 @@
     ],
     "project": "deepdown.tiled-project",
     "recentFiles": [
-        "assets/tilesheets/sample-sheet.tsx",
         "assets/tilemaps/sample-map.tmx",
+        "assets/tilesheets/sample-sheet.tsx",
         "assets/tilemaps/sample-mapB.tmx",
         "assets/tilemaps/sample-map-b.tmx",
         "assets/tilesheets/sample-map-b.tmx"

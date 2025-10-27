@@ -6,8 +6,8 @@ import "github.com/adm87/deepdown/scripts/assets"
 // This file registers all asset paths to their respective handles.
 
 const (
+	GymCollision  = assets.AssetHandle("assets/tilemaps/gym_collision.tmx")
 	Img10x10      = assets.AssetHandle("embedded/images/img_10x10.png")
-	SampleMap     = assets.AssetHandle("assets/tilemaps/sample-map.tmx")
 	SampleSheet   = assets.AssetHandle("assets/tilesheets/sample-sheet.tsx")
 	TilemapPacked = assets.AssetHandle("assets/images/tilemap_packed.png")
 )

@@ -23,7 +23,7 @@ func BuildLevel(logger *slog.Logger, world *collision.World, tmx *tiled.Tmx) (co
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := BuildCollision(logger, world, tiled.ObjectGroupByName(tmx, "WorldCollision")); err != nil {
+		if err := BuildStaticCollision(logger, world, tiled.ObjectGroupByName(tmx, "Static")); err != nil {
 			errch <- err
 		}
 
@@ -39,7 +39,7 @@ func BuildLevel(logger *slog.Logger, world *collision.World, tmx *tiled.Tmx) (co
 	return player, nil
 }
 
-func BuildCollision(logger *slog.Logger, world *collision.World, collisionGroup *tiled.ObjectGroup) error {
+func BuildStaticCollision(logger *slog.Logger, world *collision.World, collisionGroup *tiled.ObjectGroup) error {
 	if collisionGroup == nil || len(collisionGroup.Objects) == 0 {
 		logger.Warn("No collision objects found")
 		return nil
@@ -53,8 +53,13 @@ func BuildCollision(logger *slog.Logger, world *collision.World, collisionGroup 
 
 		switch {
 		case len(collisionGroup.Objects[i].Polygon.Points) > 0:
-			collider = collision.NewPolygonCollider(object.X, object.Y, polygon.Points)
-			collider.(*collision.PolygonCollider).SetType(collision.Static)
+			if len(collisionGroup.Objects[i].Polygon.Points) == 6 {
+				collider = collision.NewTriangleCollider(object.X, object.Y, polygon.Points)
+				collider.(*collision.TriangleCollider).SetType(collision.Static)
+			} else {
+				collider = collision.NewPolygonCollider(object.X, object.Y, polygon.Points)
+				collider.(*collision.PolygonCollider).SetType(collision.Static)
+			}
 		default:
 			collider = collision.NewBoxCollider(object.X, object.Y, object.Width, object.Height)
 			collider.(*collision.BoxCollider).SetType(collision.Static)

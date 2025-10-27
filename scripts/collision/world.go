@@ -47,21 +47,34 @@ func DecodePair(pair CollisionPair) (id1, id2 uint32) {
 	return id1, id2
 }
 
+// CollisionHandler is a function signature for when two colliders enter/exit a potential phase
+type CollisionHandler func(colliderA, colliderB Collider)
+
+var DefaultCollisionHandler = func(colliderA, colliderB Collider) {}
+
 type World struct {
 	ctx deepdown.Context
 
-	grid *hash.Grid[Collider]
+	grid *hash.Grid[Collider] // Spatial indexing grid
 
-	staticColliders  []Collider
 	dynamicColliders []Collider
 
-	activePairs hash.Set[CollisionPair]
+	activePairs map[CollisionPair][2]Collider
+	pairs       map[CollisionPair][2]Collider
+
+	OnEnter CollisionHandler
+	OnStay  CollisionHandler
+	OnExit  CollisionHandler
 }
 
 func NewWorld(ctx deepdown.Context) *World {
 	return &World{
+		OnEnter:     DefaultCollisionHandler,
+		OnStay:      DefaultCollisionHandler,
+		OnExit:      DefaultCollisionHandler,
 		grid:        hash.NewGrid[Collider](GridCellSize, GridCellSize),
-		activePairs: hash.NewSet[CollisionPair](),
+		activePairs: make(map[CollisionPair][2]Collider, 10),
+		pairs:       make(map[CollisionPair][2]Collider, 10),
 		ctx:         ctx,
 	}
 }
@@ -69,10 +82,7 @@ func NewWorld(ctx deepdown.Context) *World {
 func (w *World) AddCollider(c Collider, padding hash.GridItemPadding) {
 	w.insert(c, padding)
 
-	switch c.Info().Type {
-	case Static:
-		w.staticColliders = append(w.staticColliders, c)
-	case Dynamic:
+	if c.Info().Type == Dynamic {
 		w.dynamicColliders = append(w.dynamicColliders, c)
 	}
 }
@@ -80,12 +90,17 @@ func (w *World) AddCollider(c Collider, padding hash.GridItemPadding) {
 func (w *World) RemoveCollider(c Collider) {
 	w.grid.Remove(c)
 
-	switch c.Info().Type {
-	case Static:
-		w.staticColliders = w.removeFrom(w.staticColliders, c)
-	case Dynamic:
+	if c.Info().Type == Dynamic {
 		w.dynamicColliders = w.removeFrom(w.dynamicColliders, c)
 	}
+}
+
+func (w *World) OnCollisionEnter(handler CollisionHandler) {
+	w.OnEnter = handler
+}
+
+func (w *World) OnCollisionExit(handler CollisionHandler) {
+	w.OnExit = handler
 }
 
 func (w *World) GetCells() []uint64 {
@@ -104,48 +119,79 @@ func (w *World) Query(minX, minY, maxX, maxY float32) []Collider {
 	return w.grid.Query(minX, minY, maxX, maxY)
 }
 
-func (w *World) UpdateCollider(c Collider, padding hash.GridItemPadding) {
-	w.grid.Remove(c)
-	w.insert(c, padding)
+func (w *World) UpdateColliders() {
+	for i := range w.dynamicColliders {
+		if w.dynamicColliders[i].applyVelocity() {
+			w.grid.Remove(w.dynamicColliders[i])
+			w.insert(w.dynamicColliders[i], hash.NoGridPadding)
+		}
+	}
 }
 
 func (w *World) CheckCollisions() {
-	newPairs := hash.NewSet[CollisionPair]()
+	w.activePairs, w.pairs = w.pairs, w.activePairs
+	clear(w.pairs)
 
-	for i := range w.dynamicColliders {
-		dynamic := w.dynamicColliders[i]
-		dynamicID := dynamic.Info().ID()
-		dynamicLayer := dynamic.Info().Layer
-
-		if dynamic.Info().Type == Ignore {
-			continue
-		}
-
-		minX, minY, maxX, maxY := dynamic.Bounds()
-		others := w.grid.Query(minX, minY, maxX, maxY)
-
-		for j := range others {
-			other := others[j]
-			otherID := other.Info().ID()
-			otherLayer := other.Info().Layer
-
-			if !ShouldCollide(dynamicLayer, otherLayer) {
+	w.collectPairs()
+	if len(w.pairs) > 0 {
+		for pairKey, colliders := range w.pairs {
+			if _, wasActive := w.activePairs[pairKey]; !wasActive {
+				w.OnEnter(colliders[0], colliders[1])
 				continue
 			}
-			if dynamicID == otherID || other.Info().Type == Ignore {
-				continue
-			}
+			w.OnStay(colliders[0], colliders[1])
 		}
 	}
 
-	w.activePairs = newPairs
+	for pairKey, colliders := range w.activePairs {
+		if _, stillActive := w.pairs[pairKey]; !stillActive {
+			w.OnExit(colliders[0], colliders[1])
+		}
+	}
+}
+
+// Broadphase collision detection: collect potential collision pairs
+func (w *World) collectPairs() {
+	for i := range w.dynamicColliders {
+		infoA := w.dynamicColliders[i].Info()
+		if infoA.Type == Ignore {
+			continue
+		}
+
+		colliderAID := infoA.id
+		colliderALayer := infoA.Layer
+
+		minX, minY, maxX, maxY := w.dynamicColliders[i].Bounds()
+		others := w.grid.Query(minX, minY, maxX, maxY)
+
+		for j := range others {
+			infoB := others[j].Info()
+
+			colliderBID := infoB.id
+			colliderBLayer := infoB.Layer
+
+			if colliderBID == colliderAID || infoB.Type == Ignore || !ShouldCollide(colliderALayer, colliderBLayer) {
+				continue // Prevent self-collision and ignored types
+			}
+
+			pairKey := EncodePair(colliderAID, colliderBID)
+			if _, exists := w.pairs[pairKey]; exists {
+				continue // Prevent duplicate pairs
+			}
+
+			w.pairs[pairKey] = [2]Collider{w.dynamicColliders[i], others[j]}
+		}
+	}
 }
 
 func (w *World) insert(c Collider, padding hash.GridItemPadding) {
 	minX, minY, maxX, maxY := c.Bounds()
-	if polygon, ok := c.(*PolygonCollider); ok {
-		w.grid.InsertFunc(c, minX, minY, maxX, maxY, padding, w.insertPolygon(polygon))
-	} else {
+	switch c.Info().Shape {
+	case Polygon:
+		w.grid.InsertFunc(c, minX, minY, maxX, maxY, padding, w.insertPolygon(c.(*PolygonCollider)))
+	case Triangle:
+		w.grid.InsertFunc(c, minX, minY, maxX, maxY, padding, w.insertTriangle(c.(*TriangleCollider)))
+	default:
 		w.grid.Insert(c, minX, minY, maxX, maxY, padding)
 	}
 }
@@ -153,6 +199,15 @@ func (w *World) insert(c Collider, padding hash.GridItemPadding) {
 func (w *World) insertPolygon(polygon *PolygonCollider) hash.GridInsertionFunc[Collider] {
 	return func(cellMinX, cellMinY, cellMaxX, cellMaxY float32) bool {
 		if polygon.IntersectsAABB(cellMinX, cellMinY, cellMaxX, cellMaxY) {
+			return true
+		}
+		return false
+	}
+}
+
+func (w *World) insertTriangle(triangle *TriangleCollider) hash.GridInsertionFunc[Collider] {
+	return func(cellMinX, cellMinY, cellMaxX, cellMaxY float32) bool {
+		if triangle.IntersectsAABB(cellMinX, cellMinY, cellMaxX, cellMaxY) {
 			return true
 		}
 		return false
