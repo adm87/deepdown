@@ -62,7 +62,7 @@ func NewGame(ctx deepdown.Context) *Game {
 		input.NewKeyPressDurationBinding(
 			actions.Jump,
 			actions.JumpThresh,
-			[2]ebiten.Key{ebiten.KeySpace},
+			[2]ebiten.Key{ebiten.KeySpace, ebiten.KeyUp},
 		),
 	)
 
