@@ -10,6 +10,8 @@ import (
 	"github.com/adm87/deepdown/scripts/camera"
 	"github.com/adm87/deepdown/scripts/collision"
 	"github.com/adm87/deepdown/scripts/deepdown"
+	"github.com/adm87/deepdown/scripts/input"
+	"github.com/adm87/deepdown/scripts/input/actions"
 	"github.com/adm87/tiled"
 	"github.com/adm87/tiled/tilemap"
 	"github.com/adm87/utilities/hash"
@@ -24,8 +26,10 @@ type Level struct {
 	tilemap *tilemap.Map
 	camera  *camera.Camera
 
-	world  *collision.World
-	player *collision.BoxCollider
+	world *collision.World
+
+	player   *collision.BoxCollider
+	onGround bool
 
 	op ebiten.DrawImageOptions
 }
@@ -58,57 +62,50 @@ func (l *Level) SetTmx(tmx *tiled.Tmx) error {
 		return err
 	}
 
+	l.world.OnEnter = l.OnCollision
+	l.world.OnStay = l.OnCollision
+
 	l.player = c.(*collision.BoxCollider)
 
 	l.camera.X = l.player.X + l.player.Width/2
 	l.camera.Y = l.player.Y + l.player.Height/2
 
-	l.world.OnEnter = l.OnCollision
-	l.world.OnStay = l.OnCollision
-
+	l.clampCamera()
 	return nil
 }
 
-func (l *Level) Update() error {
-	l.player.Velocity[1] += 0.5 // Gravity
+func (l *Level) Update(dt float64) {
+	falling := l.player.Velocity[1] > 0
 
-	// Early Update Phase
-	if ebiten.IsKeyPressed(ebiten.KeyA) || ebiten.IsKeyPressed(ebiten.KeyLeft) {
-		l.player.Velocity[0] -= 0.2
+	if input.IsActive(actions.MoveLeft) {
+		l.player.Velocity[0] -= actions.MovementSpeed
 	}
-	if ebiten.IsKeyPressed(ebiten.KeyD) || ebiten.IsKeyPressed(ebiten.KeyRight) {
-		l.player.Velocity[0] += 0.2
+	if input.IsActive(actions.MoveRight) {
+		l.player.Velocity[0] += actions.MovementSpeed
 	}
-	if ebiten.IsKeyPressed(ebiten.KeyW) || ebiten.IsKeyPressed(ebiten.KeyUp) {
-		l.player.Velocity[1] -= 1
+	if jump := input.GetBinding[*input.KeyPressDurationBinding](actions.Jump); jump != nil {
+		if !falling && l.onGround && jump.JustReleased() {
+			pressure := jump.Pressure()
+			l.player.Velocity[1] = actions.JumpVelocity * float32(pressure)
+			l.onGround = false
+		}
 	}
+}
 
-	if ebiten.IsKeyPressed(ebiten.KeySpace) {
-		l.player.X = l.camera.X - l.player.Width/2
-		l.player.Y = l.camera.Y - l.player.Height/2
-		l.player.Velocity[0] = 0
-		l.player.Velocity[1] = 0
-	}
+func (l *Level) FixedUpdate(dt float64) {
+	l.player.Velocity[1] += actions.Gravity * float32(dt)
 
-	// Fixed Update Phase - TODO implement fixed timestep
-	l.world.UpdateColliders()
+	l.world.UpdateColliders(dt)
 	l.world.CheckCollisions()
 
-	// Late Update Phase
+	l.player.Velocity[0] *= actions.MovementDampening
+}
+
+func (l *Level) LateUpdate(dt float64) {
 	l.camera.X = l.player.X + l.player.Width/2
 	l.camera.Y = l.player.Y + l.player.Height/2
 
-	maxX := l.tilemap.Tmx.Width * l.tilemap.Tmx.TileWidth
-	maxY := l.tilemap.Tmx.Height * l.tilemap.Tmx.TileHeight
-
-	l.camera.X = float32(math.Max(float64(l.camera.Width)/2, float64(l.camera.X)))
-	l.camera.Y = float32(math.Max(float64(l.camera.Height)/2, float64(l.camera.Y)))
-	l.camera.X = float32(math.Min(float64(maxX)-float64(l.camera.Width)/2, float64(l.camera.X)))
-	l.camera.Y = float32(math.Min(float64(maxY)-float64(l.camera.Height)/2, float64(l.camera.Y)))
-
-	l.player.Velocity[0] *= 0.8
-	l.player.Velocity[1] *= 0.9
-	return nil
+	l.clampCamera()
 }
 
 func (l *Level) Draw(screen *ebiten.Image) {
@@ -224,4 +221,14 @@ func (l *Level) DrawPotentialCollisions(screen *ebiten.Image, mat ebiten.GeoM) {
 	vector.StrokePath(screen, &path, &vector.StrokeOptions{
 		Width: 1,
 	}, op)
+}
+
+func (l *Level) clampCamera() {
+	maxX := l.tilemap.Tmx.Width * l.tilemap.Tmx.TileWidth
+	maxY := l.tilemap.Tmx.Height * l.tilemap.Tmx.TileHeight
+
+	l.camera.X = float32(math.Max(float64(l.camera.Width)/2, float64(l.camera.X)))
+	l.camera.Y = float32(math.Max(float64(l.camera.Height)/2, float64(l.camera.Y)))
+	l.camera.X = float32(math.Min(float64(maxX)-float64(l.camera.Width)/2, float64(l.camera.X)))
+	l.camera.Y = float32(math.Min(float64(maxY)-float64(l.camera.Height)/2, float64(l.camera.Y)))
 }

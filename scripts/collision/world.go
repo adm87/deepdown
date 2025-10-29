@@ -9,10 +9,10 @@ const (
 	GridCellSize float32 = 8.0
 )
 
-var collisionMatrix [256][256]bool
+var collisionMatrix [32][32]bool
 
 func init() {
-	for i := range 256 {
+	for i := range 32 {
 		collisionMatrix[DefaultLayer][i] = true
 		collisionMatrix[i][DefaultLayer] = true
 	}
@@ -119,9 +119,9 @@ func (w *World) Query(minX, minY, maxX, maxY float32) []Collider {
 	return w.grid.Query(minX, minY, maxX, maxY)
 }
 
-func (w *World) UpdateColliders() {
+func (w *World) UpdateColliders(dt float64) {
 	for i := range w.dynamicColliders {
-		if w.dynamicColliders[i].applyVelocity() {
+		if w.dynamicColliders[i].applyVelocity(dt) {
 			w.grid.Remove(w.dynamicColliders[i])
 			w.insert(w.dynamicColliders[i], hash.NoGridPadding)
 		}

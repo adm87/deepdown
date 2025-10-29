@@ -47,14 +47,20 @@ func (l *Level) staticCollision(colliderA, colliderB collision.Collider) {
 					box.Y -= contact.Normal[1] * contact.Depth
 				}
 				box.Velocity[1] = 0
+				if contact.Normal[1] > 0 {
+					l.onGround = true
+				}
 			}
 		}
 
 	case *collision.TriangleCollider:
-		if contact, overlaps := collision.BoxVsTriangle(box, other, box.Velocity[1]); overlaps {
+		if contact, overlaps := collision.BoxVsTriangle(box, other); overlaps {
 			if contact.Normal[1] != 0 {
 				box.Y -= contact.Normal[1] * contact.Depth
-				box.Velocity[1] = 0
+				if contact.Normal[1] > 0 {
+					box.Velocity[1] = 0
+					l.onGround = true
+				}
 			}
 		}
 

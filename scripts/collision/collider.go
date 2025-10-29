@@ -28,7 +28,7 @@ type Collider interface {
 	Info() ColliderInfo
 	Equals(other Collider) bool
 
-	applyVelocity() bool
+	applyVelocity(dt float64) bool
 }
 
 type ColliderInfo struct {
@@ -76,7 +76,7 @@ func NewTriangleCollider(x, y float32, points []float32) *TriangleCollider {
 	}
 }
 
-func (tc *TriangleCollider) applyVelocity() bool {
+func (tc *TriangleCollider) applyVelocity(dt float64) bool {
 	tc.previous[0] = tc.Triangle.X
 	tc.previous[1] = tc.Triangle.Y
 
@@ -90,8 +90,8 @@ func (tc *TriangleCollider) applyVelocity() bool {
 		return false
 	}
 
-	tc.Triangle.X += tc.ColliderInfo.Velocity[0]
-	tc.Triangle.Y += tc.ColliderInfo.Velocity[1]
+	tc.Triangle.X += tc.ColliderInfo.Velocity[0] * float32(dt)
+	tc.Triangle.Y += tc.ColliderInfo.Velocity[1] * float32(dt)
 	return true
 }
 
@@ -144,7 +144,7 @@ func NewBoxCollider(x, y, width, height float32) *BoxCollider {
 	}
 }
 
-func (bc *BoxCollider) applyVelocity() bool {
+func (bc *BoxCollider) applyVelocity(dt float64) bool {
 	bc.previous[0] = bc.Rectangle.X
 	bc.previous[1] = bc.Rectangle.Y
 
@@ -158,8 +158,8 @@ func (bc *BoxCollider) applyVelocity() bool {
 		return false
 	}
 
-	bc.Rectangle.X += bc.ColliderInfo.Velocity[0]
-	bc.Rectangle.Y += bc.ColliderInfo.Velocity[1]
+	bc.Rectangle.X += bc.ColliderInfo.Velocity[0] * float32(dt)
+	bc.Rectangle.Y += bc.ColliderInfo.Velocity[1] * float32(dt)
 	return true
 }
 
@@ -211,7 +211,7 @@ func NewPolygonCollider(x, y float32, points []float32) *PolygonCollider {
 	}
 }
 
-func (pc *PolygonCollider) applyVelocity() bool {
+func (pc *PolygonCollider) applyVelocity(dt float64) bool {
 	pc.previous[0] = pc.Polygon.X
 	pc.previous[1] = pc.Polygon.Y
 
@@ -225,8 +225,8 @@ func (pc *PolygonCollider) applyVelocity() bool {
 		return false
 	}
 
-	pc.Polygon.X += pc.ColliderInfo.Velocity[0]
-	pc.Polygon.Y += pc.ColliderInfo.Velocity[1]
+	pc.Polygon.X += pc.ColliderInfo.Velocity[0] * float32(dt)
+	pc.Polygon.Y += pc.ColliderInfo.Velocity[1] * float32(dt)
 	return true
 }
 

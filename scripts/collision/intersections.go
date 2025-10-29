@@ -25,6 +25,10 @@ func BoxVsBox(a, b *BoxCollider) (Contact, bool) {
 
 	// Choose separation axis based on minimum depth
 	if depthX < depthY {
+		if depthX < 0.01 {
+			return contact, false
+		}
+
 		normalX := float32(1)
 		if (minXA + maxXA) > (minXB + maxXB) {
 			normalX = -1
@@ -49,7 +53,7 @@ func BoxVsBox(a, b *BoxCollider) (Contact, bool) {
 	return contact, true
 }
 
-func BoxVsTriangle(a *BoxCollider, b *TriangleCollider, velocityY float32) (Contact, bool) {
+func BoxVsTriangle(a *BoxCollider, b *TriangleCollider) (Contact, bool) {
 	var contact Contact
 	minXA, minYA, maxXA, maxYA := a.Bounds()
 	minXB, minYB, maxXB, maxYB := b.Bounds()
@@ -58,50 +62,36 @@ func BoxVsTriangle(a *BoxCollider, b *TriangleCollider, velocityY float32) (Cont
 		return contact, false
 	}
 
-	triangle := b.Triangle
-	testX := (minXA + maxXA) * 0.5
-	var testY float32
-	var normal [2]float32
+	centerX := (minXA + maxXA) / 2
 
-	if velocityY >= 0 {
-		// Falling or stationary: test bottom
-		testY = maxYA
-		normal = [2]float32{triangle.Nx, triangle.Ny}
-	} else {
-		// Jumping: test top
-		testY = minYA
-		normal = [2]float32{-triangle.Nx, -triangle.Ny} // Flip normal for ceiling
-	}
-
-	if testX < minXB || testX > maxXB {
-		return contact, false
-	}
-
-	surfaceY, found := findTriangleSurfaceAt(testX, &triangle)
-	if !found {
-		return contact, false
-	}
-	const tolerance = 0.1
-	if testY <= surfaceY+tolerance {
-		return contact, false
-	}
-
-	if velocityY >= 0 {
-		if testY <= surfaceY+tolerance {
-			return contact, false
+	if surfaceY, found := findTriangleSurfaceAt(centerX, &b.Triangle); found {
+		if maxYA >= surfaceY && minYA < surfaceY {
+			depth := maxYA - surfaceY
+			if depth < 0.01 {
+				return contact, false
+			}
+			contact = Contact{
+				Point:  [2]float32{centerX, surfaceY},
+				Normal: [2]float32{b.Triangle.Nx, b.Triangle.Ny},
+				Depth:  depth,
+			}
+			return contact, true
 		}
-		contact.Depth = testY - surfaceY
-	} else {
-		if testY >= surfaceY-tolerance {
-			return contact, false
+		if minYA <= surfaceY && maxYA > surfaceY {
+			depth := surfaceY - minYA
+			if depth < 0.01 {
+				return contact, false
+			}
+			contact = Contact{
+				Point:  [2]float32{centerX, surfaceY},
+				Normal: [2]float32{b.Triangle.Nx, b.Triangle.Ny},
+				Depth:  depth,
+			}
+			return contact, true
 		}
-		contact.Depth = surfaceY - testY
 	}
 
-	contact.Point = [2]float32{testX, surfaceY}
-	contact.Normal = normal
-
-	return contact, true
+	return contact, false
 }
 
 func abs(a float32) float32 {
