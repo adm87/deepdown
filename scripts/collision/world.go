@@ -198,19 +198,13 @@ func (w *World) insert(c Collider, padding hash.GridItemPadding) {
 
 func (w *World) insertPolygon(polygon *PolygonCollider) hash.GridInsertionFunc[Collider] {
 	return func(cellMinX, cellMinY, cellMaxX, cellMaxY float32) bool {
-		if polygon.IntersectsAABB(cellMinX, cellMinY, cellMaxX, cellMaxY) {
-			return true
-		}
-		return false
+		return polygon.IntersectsAABB(cellMinX, cellMinY, cellMaxX, cellMaxY)
 	}
 }
 
 func (w *World) insertTriangle(triangle *TriangleCollider) hash.GridInsertionFunc[Collider] {
 	return func(cellMinX, cellMinY, cellMaxX, cellMaxY float32) bool {
-		if triangle.IntersectsAABB(cellMinX, cellMinY, cellMaxX, cellMaxY) {
-			return true
-		}
-		return false
+		return triangle.IntersectsAABB(cellMinX, cellMinY, cellMaxX, cellMaxY)
 	}
 }
 

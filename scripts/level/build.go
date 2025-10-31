@@ -1,43 +1,15 @@
 package level
 
 import (
+	"errors"
 	"log/slog"
-	"sync"
 
 	"github.com/adm87/deepdown/scripts/assets"
 	"github.com/adm87/deepdown/scripts/collision"
 	"github.com/adm87/tiled"
+	"github.com/adm87/tiled/tilemap"
 	"github.com/adm87/utilities/hash"
 )
-
-func BuildLevel(logger *slog.Logger, world *collision.World, tmx *tiled.Tmx) (collision.Collider, error) {
-	player, err := BuildPlayer(logger, world, tiled.ObjectGroupByName(tmx, "Player"), tmx)
-	if err != nil {
-		return nil, err
-	}
-	player.Layer = collision.NewLayer("Player")
-
-	errch := make(chan error, 1)
-
-	wg := sync.WaitGroup{}
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		if err := BuildStaticCollision(logger, world, tiled.ObjectGroupByName(tmx, "Static")); err != nil {
-			errch <- err
-		}
-
-	}()
-	wg.Wait()
-
-	close(errch)
-
-	if err, ok := <-errch; ok {
-		return nil, err
-	}
-
-	return player, nil
-}
 
 func BuildStaticCollision(logger *slog.Logger, world *collision.World, collisionGroup *tiled.ObjectGroup) error {
 	if collisionGroup == nil || len(collisionGroup.Objects) == 0 {
@@ -71,7 +43,7 @@ func BuildStaticCollision(logger *slog.Logger, world *collision.World, collision
 	return nil
 }
 
-func BuildPlayer(logger *slog.Logger, world *collision.World, spawnGroup *tiled.ObjectGroup, tmx *tiled.Tmx) (*collision.BoxCollider, error) {
+func BuildPlayer(logger *slog.Logger, world *collision.World, spawnGroup *tiled.ObjectGroup, tmx *tiled.Tmx) (*Player, error) {
 	if spawnGroup == nil || len(spawnGroup.Objects) == 0 {
 		logger.Warn("No player spawn object found")
 		return nil, nil
@@ -79,8 +51,17 @@ func BuildPlayer(logger *slog.Logger, world *collision.World, spawnGroup *tiled.
 
 	for i := range spawnGroup.Objects {
 		object := &spawnGroup.Objects[i]
-		box := collision.NewBoxCollider(object.X, object.Y, object.Width, object.Height)
-		box.SetType(collision.Dynamic)
+
+		data, ok := tilemap.GetTileData(object.GID, tmx, 0, 0)
+		if !ok {
+			return nil, errors.New("Failed to get player tiled data")
+		}
+
+		player := &Player{
+			BoxCollider: *collision.NewBoxCollider(object.X, object.Y, object.Width, object.Height),
+			data:        data,
+		}
+		player.SetType(collision.Dynamic)
 
 		tileID, _ := tiled.DecodeGID(object.GID)
 		tileset, _, _ := tiled.TilesetByGID(tmx, tileID)
@@ -88,11 +69,10 @@ func BuildPlayer(logger *slog.Logger, world *collision.World, spawnGroup *tiled.
 		tsx := assets.MustGet[*tiled.Tsx](assets.AssetHandle(tileset.Source))
 		x, y := tiled.ObjectAlignmentAnchor(tsx.ObjectAlignment)
 
-		box.Offset[0] = -x * object.Width
-		box.Offset[1] = -y * object.Height
+		player.Offset[0] = -x * object.Width
+		player.Offset[1] = -y * object.Height
 
-		world.AddCollider(box, hash.NoGridPadding)
-		return box, nil
+		return player, nil
 	}
 
 	return nil, nil

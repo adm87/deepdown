@@ -1,6 +1,8 @@
 package game
 
 import (
+	"math"
+
 	"github.com/adm87/deepdown/data"
 	"github.com/adm87/deepdown/scripts/assets"
 	"github.com/adm87/deepdown/scripts/debug"
@@ -18,7 +20,7 @@ const (
 	TargetWidth  = 1280
 	TargetHeight = 720
 
-	Scale         = 0.15
+	Scale         = 0.16
 	MaxFixedSteps = 5
 )
 
@@ -102,7 +104,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
-	width := int(float64(TargetWidth) * Scale)
-	height := int(float64(TargetHeight) * Scale)
+	width := int(math.Round(float64(TargetWidth) * float64(Scale)))
+	height := int(math.Round(float64(TargetHeight) * float64(Scale)))
 	return width, height
 }

@@ -1,7 +1,6 @@
 package level
 
 import (
-	"fmt"
 	"image"
 	"image/color"
 	"math"
@@ -9,6 +8,7 @@ import (
 	"github.com/adm87/deepdown/scripts/assets"
 	"github.com/adm87/deepdown/scripts/camera"
 	"github.com/adm87/deepdown/scripts/collision"
+	"github.com/adm87/deepdown/scripts/debug"
 	"github.com/adm87/deepdown/scripts/deepdown"
 	"github.com/adm87/deepdown/scripts/input"
 	"github.com/adm87/deepdown/scripts/input/actions"
@@ -16,9 +16,14 @@ import (
 	"github.com/adm87/tiled/tilemap"
 	"github.com/adm87/utilities/hash"
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 )
+
+type Player struct {
+	collision.BoxCollider
+
+	data tilemap.Data
+}
 
 type Level struct {
 	ctx deepdown.Context
@@ -28,7 +33,7 @@ type Level struct {
 
 	world *collision.World
 
-	player   *collision.BoxCollider
+	player   *Player
 	onGround bool
 
 	op ebiten.DrawImageOptions
@@ -57,15 +62,20 @@ func (l *Level) SetTmx(tmx *tiled.Tmx) error {
 	l.tilemap.SetTmx(tmx)
 	l.tilemap.Frame().Set(l.camera.Viewport())
 
-	c, err := BuildLevel(l.ctx.Logger(), l.world, tmx)
+	l.world.OnEnter = l.OnCollision
+	l.world.OnStay = l.OnCollision
+
+	if err := BuildStaticCollision(l.ctx.Logger(), l.world, tiled.ObjectGroupByName(tmx, "Static")); err != nil {
+		return err
+	}
+
+	p, err := BuildPlayer(l.ctx.Logger(), l.world, tiled.ObjectGroupByName(tmx, "Player"), tmx)
 	if err != nil {
 		return err
 	}
 
-	l.world.OnEnter = l.OnCollision
-	l.world.OnStay = l.OnCollision
-
-	l.player = c.(*collision.BoxCollider)
+	l.player = p
+	l.world.AddCollider(&l.player.BoxCollider, hash.NoGridPadding)
 
 	l.camera.X = l.player.X + l.player.Width/2
 	l.camera.Y = l.player.Y + l.player.Height/2
@@ -105,10 +115,15 @@ func (l *Level) LateUpdate(dt float64) {
 	l.camera.X = l.player.X + l.player.Width/2
 	l.camera.Y = l.player.Y + l.player.Height/2
 
+	l.player.data.X = l.player.X + l.player.Offset[0]
+	l.player.data.Y = l.player.Y + l.player.Offset[1]
+
 	l.clampCamera()
 }
 
 func (l *Level) Draw(screen *ebiten.Image) {
+	screen.Fill(color.RGBA{R: 30, G: 30, B: 30, A: 255})
+
 	l.tilemap.Frame().Set(l.camera.Viewport())
 	l.tilemap.BufferFrame()
 
@@ -119,59 +134,67 @@ func (l *Level) Draw(screen *ebiten.Image) {
 		l.DrawTileBatch(screen, tiles, mat)
 	}
 
-	// l.DrawCollisionCells(screen, mat)
-	l.DrawPotentialCollisions(screen, mat)
+	l.DrawTile(&l.player.data, screen, mat)
 
-	msg := fmt.Sprintf("Velocity X: %.2f Y: %.2f", l.player.Velocity[0], l.player.Velocity[1])
-	ebitenutil.DebugPrintAt(screen, msg, 10, 10)
+	if debug.DrawCollisionCells {
+		l.DrawCollisionCells(screen, mat)
+	}
+
+	if debug.DrawPotentialCollisions {
+		l.DrawPotentialCollisions(screen, mat)
+	}
 }
 
 func (l *Level) DrawTileBatch(screen *ebiten.Image, tiles []tilemap.Data, mat ebiten.GeoM) {
 	for i := range tiles {
-		tileset, err := l.tilemap.GetTileset(tiles[i].TsIdx)
-		if err != nil {
-			println(err.Error())
-			return
-		}
-
-		tsx := assets.MustGet[*tiled.Tsx](assets.AssetHandle(tileset.Source))
-		img := assets.MustGet[*ebiten.Image](assets.AssetHandle(tsx.Image.Source))
-
-		srcX := (int32(tiles[i].TileID) % tsx.Columns) * tsx.TileWidth
-		srcY := (int32(tiles[i].TileID) / tsx.Columns) * tsx.TileHeight
-		srcRect := image.Rect(int(srcX), int(srcY), int(srcX+tsx.TileWidth), int(srcY+tsx.TileHeight))
-
-		distX := float64(tiles[i].X) + float64(tsx.TileOffset.X)
-		distY := float64(tiles[i].Y) + float64(tsx.TileOffset.Y)
-		distY -= float64(tsx.TileHeight) - float64(l.tilemap.Tmx.TileHeight) // Align to bottom of tile
-
-		l.op.GeoM.Reset()
-
-		if tiles[i].FlipFlag.Diagonal() {
-			l.op.GeoM.Rotate(math.Pi * 0.5)
-			l.op.GeoM.Scale(-1, 1)
-			l.op.GeoM.Translate(float64(tsx.TileHeight-tsx.TileWidth), 0)
-		}
-
-		if tiles[i].FlipFlag.Horizontal() {
-			l.op.GeoM.Scale(-1, 1)
-			l.op.GeoM.Translate(float64(tsx.TileWidth), 0)
-		}
-
-		if tiles[i].FlipFlag.Vertical() {
-			l.op.GeoM.Scale(1, -1)
-			l.op.GeoM.Translate(0, float64(tsx.TileHeight))
-		}
-
-		l.op.GeoM.Translate(distX, distY)
-		l.op.GeoM.Concat(mat)
-
-		screen.DrawImage(img.SubImage(srcRect).(*ebiten.Image), &l.op)
+		l.DrawTile(&tiles[i], screen, mat)
 	}
 }
 
+func (l *Level) DrawTile(data *tilemap.Data, screen *ebiten.Image, mat ebiten.GeoM) {
+	tileset, err := l.tilemap.GetTileset(data.TsIdx)
+	if err != nil {
+		println(err.Error())
+		return
+	}
+
+	tsx := assets.MustGet[*tiled.Tsx](assets.AssetHandle(tileset.Source))
+	img := assets.MustGet[*ebiten.Image](assets.AssetHandle(tsx.Image.Source))
+
+	srcX := (int32(data.TileID) % tsx.Columns) * tsx.TileWidth
+	srcY := (int32(data.TileID) / tsx.Columns) * tsx.TileHeight
+	srcRect := image.Rect(int(srcX), int(srcY), int(srcX+tsx.TileWidth), int(srcY+tsx.TileHeight))
+
+	distX := float64(data.X) + float64(tsx.TileOffset.X)
+	distY := float64(data.Y) + float64(tsx.TileOffset.Y)
+	distY -= float64(tsx.TileHeight) - float64(l.tilemap.Tmx.TileHeight) // Align to bottom of tile
+
+	l.op.GeoM.Reset()
+
+	if data.FlipFlag.Diagonal() {
+		l.op.GeoM.Rotate(math.Pi * 0.5)
+		l.op.GeoM.Scale(-1, 1)
+		l.op.GeoM.Translate(float64(tsx.TileHeight-tsx.TileWidth), 0)
+	}
+
+	if data.FlipFlag.Horizontal() {
+		l.op.GeoM.Scale(-1, 1)
+		l.op.GeoM.Translate(float64(tsx.TileWidth), 0)
+	}
+
+	if data.FlipFlag.Vertical() {
+		l.op.GeoM.Scale(1, -1)
+		l.op.GeoM.Translate(0, float64(tsx.TileHeight))
+	}
+
+	l.op.GeoM.Translate(distX, distY)
+	l.op.GeoM.Concat(mat)
+
+	screen.DrawImage(img.SubImage(srcRect).(*ebiten.Image), &l.op)
+}
+
 func (l *Level) DrawCollisionCells(screen *ebiten.Image, mat ebiten.GeoM) {
-	cells := l.world.QueryCells(l.player.Bounds())
+	cells := l.world.QueryCells(l.camera.Viewport())
 	width, height := l.world.GetCellSize()
 	path := vector.Path{}
 

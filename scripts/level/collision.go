@@ -26,26 +26,24 @@ func (l *Level) OnCollision(colliderA, colliderB collision.Collider) {
 func (l *Level) staticCollision(colliderA, colliderB collision.Collider) {
 	box := colliderA.(*collision.BoxCollider)
 
+	minXA, _, maxXA, _ := box.Bounds()
+	minXB, _, maxXB, _ := colliderB.Bounds()
+
+	center := (minXA + maxXA) / 2
+	if center < minXB || center > maxXB {
+		return
+	}
+
 	switch other := colliderB.(type) {
 	case *collision.BoxCollider:
 		if contact, overlaps := collision.BoxVsBox(box, other); overlaps {
-			minXA, _, maxXA, _ := box.Bounds()
-			minXB, _, maxXB, _ := other.Bounds()
-
-			center := (minXA + maxXA) / 2
-
-			if contact.Normal[0] != 0 && center > minXB && center < maxXB {
+			if contact.Normal[0] != 0 {
 				depth := min(center-minXB, maxXB-center)
 				box.X -= contact.Normal[0] * depth
 				box.Velocity[0] = 0
 			}
-
 			if contact.Normal[1] != 0 {
-				if contact.Normal[1] < 0 {
-					box.Y -= contact.Normal[1] * contact.Depth
-				} else if center > minXB && center < maxXB && box.Velocity[1] > 0 {
-					box.Y -= contact.Normal[1] * contact.Depth
-				}
+				box.Y -= contact.Normal[1] * contact.Depth
 				box.Velocity[1] = 0
 				if contact.Normal[1] > 0 {
 					l.onGround = true
