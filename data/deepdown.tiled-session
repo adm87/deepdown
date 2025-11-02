@@ -3,14 +3,25 @@
         "height": 4300,
         "width": 2
     },
-    "activeFile": "assets/tilemaps/sample-map.tmx",
+    "activeFile": "assets/tilemaps/gym_collision.tmx",
     "expandedProjectPaths": [
-        "assets/tilesheets",
         "assets",
         "assets/tilemaps",
+        "assets/tilesheets",
         "."
     ],
     "fileStates": {
+        "assets/tilemaps/gym_collision.tmx": {
+            "expandedObjectLayers": [
+                2
+            ],
+            "scale": 6.551041666666666,
+            "selectedLayer": 2,
+            "viewCenter": {
+                "x": 120.05724280489744,
+                "y": 80.0636031165527
+            }
+        },
         "assets/tilemaps/gym_slopes.tmx": {
             "scale": 6.551041666666666,
             "selectedLayer": 2,
@@ -67,13 +78,14 @@
     "map.tileHeight": 8,
     "map.tileWidth": 8,
     "openFiles": [
-        "assets/tilemaps/sample-map.tmx",
-        "assets/tilesheets/sample-sheet.tsx"
+        "assets/tilesheets/sample-sheet.tsx",
+        "assets/tilemaps/gym_collision.tmx"
     ],
     "project": "deepdown.tiled-project",
     "recentFiles": [
-        "assets/tilemaps/sample-map.tmx",
         "assets/tilesheets/sample-sheet.tsx",
+        "assets/tilemaps/gym_collision.tmx",
+        "assets/tilemaps/sample-map.tmx",
         "assets/tilemaps/sample-mapB.tmx",
         "assets/tilemaps/sample-map-b.tmx",
         "assets/tilesheets/sample-map-b.tmx"

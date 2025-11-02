@@ -1,28 +1,30 @@
 package level
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 	"math"
 
 	"github.com/adm87/deepdown/scripts/assets"
 	"github.com/adm87/deepdown/scripts/camera"
-	"github.com/adm87/deepdown/scripts/collision"
 	"github.com/adm87/deepdown/scripts/debug"
 	"github.com/adm87/deepdown/scripts/deepdown"
 	"github.com/adm87/deepdown/scripts/input"
 	"github.com/adm87/deepdown/scripts/input/actions"
+	"github.com/adm87/deepdown/scripts/physics"
 	"github.com/adm87/tiled"
 	"github.com/adm87/tiled/tilemap"
 	"github.com/adm87/utilities/hash"
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 )
 
 type Player struct {
-	collision.BoxCollider
+	physics.BoxCollider
 
-	data tilemap.Data
+	Data tilemap.Data
 }
 
 type Level struct {
@@ -30,17 +32,15 @@ type Level struct {
 
 	tilemap *tilemap.Map
 	camera  *camera.Camera
+	player  *Player
 
-	world *collision.World
-
-	player   *Player
-	onGround bool
+	world *physics.World
 
 	op ebiten.DrawImageOptions
 }
 
 func NewLevel(ctx deepdown.Context, targetWidth, targetHeight float32) *Level {
-	world := collision.NewWorld(ctx)
+	world := physics.NewWorld(ctx)
 	return &Level{
 		ctx:     ctx,
 		tilemap: tilemap.NewMap(),
@@ -62,31 +62,19 @@ func (l *Level) SetTmx(tmx *tiled.Tmx) error {
 	l.tilemap.SetTmx(tmx)
 	l.tilemap.Frame().Set(l.camera.Viewport())
 
-	l.world.OnEnter = l.OnCollision
-	l.world.OnStay = l.OnCollision
-
-	if err := BuildStaticCollision(l.ctx.Logger(), l.world, tiled.ObjectGroupByName(tmx, "Static")); err != nil {
+	if err := l.BuildStaticCollision(tiled.ObjectGroupByName(tmx, "Static")); err != nil {
 		return err
 	}
 
-	p, err := BuildPlayer(l.ctx.Logger(), l.world, tiled.ObjectGroupByName(tmx, "Player"), tmx)
-	if err != nil {
+	if err := l.BuildPlayer(tiled.ObjectGroupByName(tmx, "Player"), tmx); err != nil {
 		return err
 	}
-
-	l.player = p
-	l.world.AddCollider(&l.player.BoxCollider, hash.NoGridPadding)
-
-	l.camera.X = l.player.X + l.player.Width/2
-	l.camera.Y = l.player.Y + l.player.Height/2
 
 	l.clampCamera()
 	return nil
 }
 
 func (l *Level) Update(dt float64) {
-	falling := l.player.Velocity[1] > 0
-
 	if input.IsActive(actions.MoveLeft) {
 		l.player.Velocity[0] -= actions.MovementSpeed
 	}
@@ -94,30 +82,24 @@ func (l *Level) Update(dt float64) {
 		l.player.Velocity[0] += actions.MovementSpeed
 	}
 	if jump := input.GetBinding[*input.KeyPressDurationBinding](actions.Jump); jump != nil {
-		if !falling && l.onGround && jump.JustReleased() {
+		if l.player.OnGround && jump.JustReleased() {
 			pressure := jump.Pressure()
 			l.player.Velocity[1] = actions.JumpVelocity * float32(pressure)
-			l.onGround = false
+			l.player.OnGround = false
 		}
 	}
 }
 
 func (l *Level) FixedUpdate(dt float64) {
-	l.player.Velocity[1] += actions.Gravity * float32(dt)
-
-	l.world.UpdateColliders(dt)
-	l.world.CheckCollisions()
-
-	l.player.Velocity[0] *= actions.MovementDampening
+	minX, minY, maxX, maxY := l.camera.Viewport()
+	l.world.Update(dt, minX, minY, maxX, maxY)
 }
 
 func (l *Level) LateUpdate(dt float64) {
 	l.camera.X = l.player.X + l.player.Width/2
 	l.camera.Y = l.player.Y + l.player.Height/2
-
-	l.player.data.X = l.player.X + l.player.Offset[0]
-	l.player.data.Y = l.player.Y + l.player.Offset[1]
-
+	l.player.Data.X = l.player.X
+	l.player.Data.Y = l.player.Y
 	l.clampCamera()
 }
 
@@ -134,15 +116,19 @@ func (l *Level) Draw(screen *ebiten.Image) {
 		l.DrawTileBatch(screen, tiles, mat)
 	}
 
-	l.DrawTile(&l.player.data, screen, mat)
+	l.DrawTile(&l.player.Data, screen, mat)
 
 	if debug.DrawCollisionCells {
-		l.DrawCollisionCells(screen, mat)
+		l.DrawCollisionCells(screen, mat, l.world.QueryStaticCells(l.camera.Viewport()), color.RGBA{R: 255, A: 255})
+		l.DrawCollisionCells(screen, mat, l.world.QueryBodyCells(l.camera.Viewport()), color.RGBA{G: 255, A: 255})
 	}
 
 	if debug.DrawPotentialCollisions {
-		l.DrawPotentialCollisions(screen, mat)
+		l.DrawPotentialCollisions(screen, mat, l.world.QueryStatic(l.camera.Viewport()), color.RGBA{B: 255, A: 255})
+		l.DrawPotentialCollisions(screen, mat, l.world.QueryBody(l.player.AABB()), color.RGBA{R: 255, G: 255, A: 255})
 	}
+
+	ebitenutil.DebugPrint(screen, fmt.Sprintf("Vel: %.2f, %.2f\nOnGround: %v", l.player.Velocity[0], l.player.Velocity[1], l.player.OnGround))
 }
 
 func (l *Level) DrawTileBatch(screen *ebiten.Image, tiles []tilemap.Data, mat ebiten.GeoM) {
@@ -193,9 +179,8 @@ func (l *Level) DrawTile(data *tilemap.Data, screen *ebiten.Image, mat ebiten.Ge
 	screen.DrawImage(img.SubImage(srcRect).(*ebiten.Image), &l.op)
 }
 
-func (l *Level) DrawCollisionCells(screen *ebiten.Image, mat ebiten.GeoM) {
-	cells := l.world.QueryCells(l.camera.Viewport())
-	width, height := l.world.GetCellSize()
+func (l *Level) DrawCollisionCells(screen *ebiten.Image, mat ebiten.GeoM, cells []uint64, col color.RGBA) {
+	width, height := physics.GridCellSize, physics.GridCellSize
 	path := vector.Path{}
 
 	for i := range cells {
@@ -212,21 +197,18 @@ func (l *Level) DrawCollisionCells(screen *ebiten.Image, mat ebiten.GeoM) {
 	}
 
 	op := &vector.DrawPathOptions{}
-	op.ColorScale.ScaleWithColor(color.RGBA{R: 255, A: 255})
+	op.ColorScale.ScaleWithColor(col)
 
 	vector.StrokePath(screen, &path, &vector.StrokeOptions{
 		Width: 1,
 	}, op)
 }
 
-func (l *Level) DrawPotentialCollisions(screen *ebiten.Image, mat ebiten.GeoM) {
-	minX, minY, maxX, maxY := l.player.Bounds()
-
-	colliders := l.world.Query(minX, minY, maxX, maxY)
+func (l *Level) DrawPotentialCollisions(screen *ebiten.Image, mat ebiten.GeoM, colliders []physics.Collider, col color.RGBA) {
 	path := vector.Path{}
 
 	for i := range colliders {
-		cMinX, cMinY, cMaxX, cMaxY := colliders[i].Bounds()
+		cMinX, cMinY, cMaxX, cMaxY := colliders[i].AABB()
 
 		minX, minY := mat.Apply(float64(cMinX), float64(cMinY))
 		maxX, maxY := mat.Apply(float64(cMaxX), float64(cMaxY))
@@ -239,7 +221,7 @@ func (l *Level) DrawPotentialCollisions(screen *ebiten.Image, mat ebiten.GeoM) {
 	}
 
 	op := &vector.DrawPathOptions{}
-	op.ColorScale.ScaleWithColor(color.RGBA{G: 255, A: 255})
+	op.ColorScale.ScaleWithColor(col)
 
 	vector.StrokePath(screen, &path, &vector.StrokeOptions{
 		Width: 1,

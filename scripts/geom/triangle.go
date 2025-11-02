@@ -26,27 +26,25 @@ type Triangle struct {
 	slopeType  SlopeType
 }
 
-func NewTriangle(x, y float32, points []float32) Triangle {
+func NewTriangle(x, y float32, points [6]float32) Triangle {
+	t := Triangle{
+		X: x,
+		Y: y,
+	}
+	t.SetPoints(points)
+	return t
+}
+
+func (t *Triangle) SetPoints(points [6]float32) {
 	if err := validateTrianglePoints(points); err != nil {
 		panic(err)
 	}
 
-	minX, minY, maxX, maxY := computeAABB(points)
-	slopeType := classifySlope45Degree(points)
-	nx, ny := computeSlopeNormal(slopeType)
-
-	return Triangle{
-		X:         x,
-		Y:         y,
-		minX:      minX,
-		minY:      minY,
-		maxX:      maxX,
-		maxY:      maxY,
-		Nx:        float32(nx),
-		Ny:        float32(ny),
-		points:    [6]float32{points[0], points[1], points[2], points[3], points[4], points[5]},
-		slopeType: slopeType,
-	}
+	t.minX, t.minY, t.maxX, t.maxY = computeAABB(points[:])
+	t.slopeType = classifySlope45Degree(points)
+	nx, ny := computeSlopeNormal(t.slopeType)
+	t.Nx, t.Ny = float32(nx), float32(ny)
+	t.points = points
 }
 
 func (t *Triangle) SlopeType() SlopeType {
@@ -113,7 +111,7 @@ func (t *Triangle) IntersectsAABB(minX, minY, maxX, maxY float32) bool {
 
 // ========== AABB interface ==========
 
-func validateTrianglePoints(points []float32) error {
+func validateTrianglePoints(points [6]float32) error {
 	if len(points) != 6 {
 		return fmt.Errorf("triangle requires exactly 6 values (3 points with x,y), got %d", len(points))
 	}
@@ -144,7 +142,7 @@ func validateTrianglePoints(points []float32) error {
 	return nil
 }
 
-func classifySlope45Degree(points []float32) SlopeType {
+func classifySlope45Degree(points [6]float32) SlopeType {
 	for i := 0; i < 6; i += 2 {
 		j := (i + 2) % 6
 
