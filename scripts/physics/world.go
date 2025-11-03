@@ -158,8 +158,7 @@ func (w *World) postupdate(activeBodies []Collider) {
 func (w *World) handleCollisions(activeBodies []Collider) {
 	for i := range activeBodies {
 		info := activeBodies[i].Info()
-		info.contacts = info.contacts[:0]
-		info.OnGround = false
+		info.collisions = info.collisions[:0]
 
 		if info.Mode == CollisionModeIgnore {
 			continue
@@ -178,21 +177,25 @@ func (w *World) handleCollisions(activeBodies []Collider) {
 			}
 
 			if contact, overlaps := CheckOverlap(activeBodies[i], others[j]); overlaps {
-				info.contacts = append(info.contacts, contact)
+				info.collisions = append(info.collisions, contact)
 			}
 		}
 
-		if len(info.contacts) > 0 {
-			w.resolveStaticContacts(info)
-		}
+		w.resolveStaticContacts(info)
 	}
 }
 
 func (w *World) resolveStaticContacts(info *ColliderInfo) {
-	var deepestX, deepestY *Contact
+	info.OnGround = false
 
-	for i := range info.contacts {
-		c := &info.contacts[i]
+	if len(info.collisions) == 0 {
+		return
+	}
+
+	var deepestX, deepestY *Collision
+
+	for i := range info.collisions {
+		c := &info.collisions[i]
 		if c.Depth < Epsilon {
 			continue
 		}

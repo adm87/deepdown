@@ -47,13 +47,13 @@ func newBoxColliderPool() *sync.Pool {
 		New: func() any {
 			return &BoxCollider{
 				ColliderInfo: ColliderInfo{
-					Movement: Movement{},
-					id:       nextColliderID(),
-					Layer:    CollisionLayerDefault,
-					Mode:     CollisionModeDiscrete,
-					State:    ColliderStateStatic,
-					Type:     ColliderTypeBox,
-					contacts: make([]Contact, 0, 4),
+					Movement:   Movement{},
+					id:         nextColliderID(),
+					Layer:      CollisionLayerDefault,
+					Mode:       CollisionModeDiscrete,
+					State:      ColliderStateStatic,
+					Type:       ColliderTypeBox,
+					collisions: make([]Collision, 0, 4),
 				},
 				Rectangle: geom.Rectangle{},
 			}
@@ -92,7 +92,7 @@ func ReleaseBoxCollider(bc *BoxCollider) {
 	bc.ColliderInfo.State = ColliderStateStatic
 	bc.ColliderInfo.Type = ColliderTypeBox
 	bc.ColliderInfo.Mode = CollisionModeDiscrete
-	bc.contacts = bc.contacts[:0]
+	bc.collisions = bc.collisions[:0]
 	boxColliderPool.Put(bc)
 }
 
@@ -105,13 +105,13 @@ func newTriangleColliderPool() *sync.Pool {
 		New: func() any {
 			return &TriangleCollider{
 				ColliderInfo: ColliderInfo{
-					Movement: Movement{},
-					id:       nextColliderID(),
-					Layer:    CollisionLayerDefault,
-					Mode:     CollisionModeDiscrete,
-					State:    ColliderStateStatic,
-					Type:     ColliderTypeBox,
-					contacts: make([]Contact, 0, 4),
+					Movement:   Movement{},
+					id:         nextColliderID(),
+					Layer:      CollisionLayerDefault,
+					Mode:       CollisionModeDiscrete,
+					State:      ColliderStateStatic,
+					Type:       ColliderTypeBox,
+					collisions: make([]Collision, 0, 4),
 				},
 				Triangle: geom.Triangle{},
 			}
@@ -149,6 +149,6 @@ func ReleaseTriangleCollider(tc *TriangleCollider) {
 	tc.ColliderInfo.State = ColliderStateStatic
 	tc.ColliderInfo.Type = ColliderTypeBox
 	tc.ColliderInfo.Mode = CollisionModeDiscrete
-	tc.contacts = tc.contacts[:0]
+	tc.collisions = tc.collisions[:0]
 	triangleColliderPool.Put(tc)
 }

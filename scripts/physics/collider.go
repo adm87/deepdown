@@ -23,7 +23,7 @@ type ColliderInfo struct {
 
 	OnGround bool
 
-	contacts []Contact
+	collisions []Collision
 }
 
 type Movement struct {
@@ -33,9 +33,11 @@ type Movement struct {
 	prevPosition [2]float32 // Previous position
 }
 
-type Contact struct {
+type Collision struct {
 	Normal [2]float32
 	Depth  float32
+
+	other Collider
 }
 
 // =========== Collider Types ==========

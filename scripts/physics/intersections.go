@@ -1,6 +1,6 @@
 package physics
 
-func CheckOverlap(colliderA, colliderB Collider) (Contact, bool) {
+func CheckOverlap(colliderA, colliderB Collider) (Collision, bool) {
 	switch a := colliderA.(type) {
 	case *BoxCollider:
 		switch b := colliderB.(type) {
@@ -17,11 +17,11 @@ func CheckOverlap(colliderA, colliderB Collider) (Contact, bool) {
 			return TriangleVsTriangle(a, b)
 		}
 	}
-	return Contact{}, false
+	return Collision{}, false
 }
 
-func BoxVsBox(b1, b2 *BoxCollider) (Contact, bool) {
-	var contact Contact
+func BoxVsBox(b1, b2 *BoxCollider) (Collision, bool) {
+	var contact Collision
 
 	minXA, minYA, maxXA, maxYA := b1.AABB()
 	minXB, minYB, maxXB, maxYB := b2.AABB()
@@ -69,14 +69,14 @@ func BoxVsBox(b1, b2 *BoxCollider) (Contact, bool) {
 	return contact, true
 }
 
-func BoxVsTriangle(box *BoxCollider, tri *TriangleCollider) (Contact, bool) {
-	var contact Contact
+func BoxVsTriangle(box *BoxCollider, tri *TriangleCollider) (Collision, bool) {
+	var contact Collision
 
 	return contact, false
 }
 
-func TriangleVsTriangle(t1, t2 *TriangleCollider) (Contact, bool) {
-	var contact Contact
+func TriangleVsTriangle(t1, t2 *TriangleCollider) (Collision, bool) {
+	var contact Collision
 
 	return contact, false
 }

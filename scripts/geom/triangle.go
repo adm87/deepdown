@@ -1,22 +1,17 @@
 package geom
 
-import (
-	"fmt"
-	"math"
-)
-
 const Sqrt1 = 0.707
 
 type SlopeType uint8
 
 const (
-	SlopeNone      SlopeType = iota
-	SlopeDownLeft            // \ - descending from left to right
-	SlopeUpLeft              // / - ascending from left to right
-	SlopeDownRight           // / - descending from right to left (visually same as UpLeft)
-	SlopeUpRight             // \ - ascending from right to left (visually same as DownLeft)
+	SlopeNone SlopeType = iota
+	SlopeFlat
+	SlopeAcending
+	SlopeDecending
 )
 
+// Triangle represents a right-angled triangle defined by three points.
 type Triangle struct {
 	X, Y       float32
 	Nx, Ny     float32
@@ -36,14 +31,7 @@ func NewTriangle(x, y float32, points [6]float32) Triangle {
 }
 
 func (t *Triangle) SetPoints(points [6]float32) {
-	if err := validateTrianglePoints(points); err != nil {
-		panic(err)
-	}
-
 	t.minX, t.minY, t.maxX, t.maxY = computeAABB(points[:])
-	t.slopeType = classifySlope45Degree(points)
-	nx, ny := computeSlopeNormal(t.slopeType)
-	t.Nx, t.Ny = float32(nx), float32(ny)
 	t.points = points
 }
 
@@ -110,103 +98,3 @@ func (t *Triangle) IntersectsAABB(minX, minY, maxX, maxY float32) bool {
 }
 
 // ========== AABB interface ==========
-
-func validateTrianglePoints(points [6]float32) error {
-	if len(points) != 6 {
-		return fmt.Errorf("triangle requires exactly 6 values (3 points with x,y), got %d", len(points))
-	}
-
-	// Extract the three points
-	p1 := [2]float32{points[0], points[1]}
-	p2 := [2]float32{points[2], points[3]}
-	p3 := [2]float32{points[4], points[5]}
-
-	if pointsEqual(p1, p2) || pointsEqual(p2, p3) || pointsEqual(p1, p3) {
-		return fmt.Errorf("triangle has duplicate points, cannot form valid triangle")
-	}
-
-	if areCollinear(p1, p2, p3) {
-		return fmt.Errorf("triangle points are collinear, cannot form valid triangle")
-	}
-
-	area := calculateTriangleArea(p1, p2, p3)
-	if area < 0.001 {
-		return fmt.Errorf("triangle area too small (%f), likely degenerate", area)
-	}
-
-	const maxTriangleSize = 10000.0
-	if area > maxTriangleSize {
-		return fmt.Errorf("triangle area too large (%f), exceeds maximum (%f)", area, maxTriangleSize)
-	}
-
-	return nil
-}
-
-func classifySlope45Degree(points [6]float32) SlopeType {
-	for i := 0; i < 6; i += 2 {
-		j := (i + 2) % 6
-
-		dx := points[j] - points[i]
-		dy := points[j+1] - points[i+1]
-
-		absDx := float32(math.Abs(float64(dx)))
-		absDy := float32(math.Abs(float64(dy)))
-
-		if math.Abs(float64(absDx-absDy)) < 0.1 {
-			if dx > 0 && dy < 0 {
-				return SlopeDownLeft
-			} else if dx > 0 && dy > 0 {
-				return SlopeUpLeft
-			} else if dx < 0 && dy < 0 {
-				return SlopeUpRight
-			} else if dx < 0 && dy > 0 {
-				return SlopeDownRight
-			}
-		}
-	}
-
-	return SlopeNone
-}
-
-func computeSlopeNormal(slopeType SlopeType) (nx, ny float64) {
-	switch slopeType {
-	case SlopeDownLeft:
-		return Sqrt1, Sqrt1 // \ slope
-	case SlopeUpLeft:
-		return -Sqrt1, Sqrt1 // / slope
-	case SlopeDownRight:
-		return -Sqrt1, -Sqrt1 // / slope
-	case SlopeUpRight:
-		return Sqrt1, -Sqrt1 // \ slope
-	default:
-		return 0.0, 0.0
-	}
-}
-
-func pointsEqual(p1, p2 [2]float32) bool {
-	const tolerance = 0.001
-	return math.Abs(float64(p1[0]-p2[0])) < tolerance &&
-		math.Abs(float64(p1[1]-p2[1])) < tolerance
-}
-
-func areCollinear(p1, p2, p3 [2]float32) bool {
-	v1x := p2[0] - p1[0]
-	v1y := p2[1] - p1[1]
-	v2x := p3[0] - p1[0]
-	v2y := p3[1] - p1[1]
-
-	crossProduct := v1x*v2y - v1y*v2x
-
-	const tolerance = 0.001
-	return math.Abs(float64(crossProduct)) < tolerance
-}
-
-func calculateTriangleArea(p1, p2, p3 [2]float32) float32 {
-	v1x := p2[0] - p1[0]
-	v1y := p2[1] - p1[1]
-	v2x := p3[0] - p1[0]
-	v2y := p3[1] - p1[1]
-
-	crossProduct := v1x*v2y - v1y*v2x
-	return float32(math.Abs(float64(crossProduct))) * 0.5
-}
