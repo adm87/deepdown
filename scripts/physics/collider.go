@@ -22,6 +22,7 @@ type ColliderInfo struct {
 	Mode  Mode
 
 	OnGround bool
+	Offset   [2]float32
 
 	collisions []Collision
 }
@@ -121,8 +122,8 @@ type BoxCollider struct {
 }
 
 func (bc *BoxCollider) AABB() (minX, minY, maxX, maxY float32) {
-	minX = bc.nextPosition[0]
-	minY = bc.nextPosition[1]
+	minX = bc.nextPosition[0] + bc.Offset[0]
+	minY = bc.nextPosition[1] + bc.Offset[1]
 	maxX = minX + bc.Width
 	maxY = minY + bc.Height
 	return

@@ -57,6 +57,10 @@ func (t *Triangle) SlopeType() SlopeType {
 	return t.slopeType
 }
 
+func (t *Triangle) Corner() [2]float32 {
+	return [2]float32{t.X + t.corner[0], t.Y + t.corner[1]}
+}
+
 func (t *Triangle) Points() []float32 {
 	return t.points[:]
 }

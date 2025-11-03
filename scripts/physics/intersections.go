@@ -1,5 +1,7 @@
 package physics
 
+import "github.com/adm87/deepdown/scripts/geom"
+
 func CheckOverlap(colliderA, colliderB Collider) (Collision, bool) {
 	switch a := colliderA.(type) {
 	case *BoxCollider:
@@ -75,9 +77,40 @@ func BoxVsTriangle(box *BoxCollider, tri *TriangleCollider) (Collision, bool) {
 	minXA, minYA, maxXA, maxYA := box.AABB()
 	minXB, minYB, maxXB, maxYB := tri.AABB()
 
-	// Check for separation
+	// Quick AABB check
 	if minXA >= maxXB || maxXA <= minXB || minYA >= maxYB || maxYA <= minYB {
 		return contact, false
+	}
+
+	// Get triangle properties
+	slope := tri.Slope()
+	corner := tri.Corner()
+
+	// Calculate box bottom-center
+	boxCenterX := (minXA + maxXA) * 0.5
+	boxBottomY := maxYA
+
+	// Check if bottom-center is within triangle's X range
+	triMinX := tri.X + min(slope[0][0], slope[1][0], corner[0])
+	triMaxX := tri.X + max(slope[0][0], slope[1][0], corner[0])
+
+	if boxCenterX < triMinX || boxCenterX > triMaxX {
+		return contact, false
+	}
+
+	// Find the Y position on the slope at the box's center X
+	surfaceY, found := geom.FindTriangleSurfaceAt(boxCenterX, &tri.Triangle)
+	if !found {
+		return contact, false
+	}
+
+	// Check if box penetrates the slope
+	if boxBottomY > surfaceY {
+		// Penetrating
+		contact.Depth = boxBottomY - surfaceY
+		contact.Normal = tri.SlopeNormal()
+		contact.other = tri
+		return contact, true
 	}
 
 	return contact, false

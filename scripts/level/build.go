@@ -43,11 +43,12 @@ func (l *Level) BuildPlayer(spawnGroup *tiled.ObjectGroup, tmx *tiled.Tmx) error
 		l.player = &Player{}
 		l.player.X = obj.X
 		l.player.Y = obj.Y
-		l.player.Width = obj.Width
+		l.player.Width = obj.Width * 0.5
 		l.player.Height = obj.Height
 
-		l.player.BoxCollider = *physics.GetBoxCollider(obj.X, obj.Y, obj.Width, obj.Height)
+		l.player.BoxCollider = *physics.GetBoxCollider(obj.X, obj.Y, l.player.Width, l.player.Height)
 		l.player.BoxCollider.Info().State = physics.ColliderStateDynamic
+		l.player.Offset[0] = (obj.Width - l.player.Width) * 0.5
 
 		data, ok := tilemap.GetTileData(obj.GID, tmx, obj.X, obj.Y)
 		if !ok {

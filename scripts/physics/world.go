@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	GridCellSize float32 = 16.0
+	GridCellSize float32 = 8.0
 	Gravity      float32 = 400.0
 	Epsilon      float32 = 0.0001
 
@@ -110,6 +110,7 @@ func (w *World) insert(collider Collider, grid *hash.Grid[Collider]) {
 func (w *World) preupdate(dt float64, activeBodies []Collider) {
 	for i := range activeBodies {
 		info := activeBodies[i].Info()
+
 		info.Velocity[1] = clamp(info.Velocity[1]+Gravity*float32(dt), MaxVelocityRiseSpeed, MaxVelocityFallSpeed)
 
 		x, y := activeBodies[i].Position()
@@ -192,43 +193,84 @@ func (w *World) resolveStaticContacts(info *ColliderInfo) {
 		return
 	}
 
-	var deepestX, deepestY *Collision
+	var horizontal *Collision
+	var vertical *Collision
+	var slope *Collision
 
 	for i := range info.collisions {
-		c := &info.collisions[i]
-		if c.Depth < Epsilon {
-			continue
-		}
-		if c.Normal[0] != 0 && (deepestX == nil || c.Depth > deepestX.Depth) {
-			deepestX = c
-		}
-		if c.Normal[1] != 0 && (deepestY == nil || c.Depth > deepestY.Depth) {
-			deepestY = c
+		contact := &info.collisions[i]
+
+		switch contact.other.(type) {
+		case *TriangleCollider:
+			if slope == nil || contact.Depth > slope.Depth {
+				slope = contact
+			}
+		default:
+			if math.Abs(float64(contact.Normal[1])) > math.Abs(float64(contact.Normal[0])) {
+				if vertical == nil || contact.Depth > vertical.Depth {
+					vertical = contact
+				}
+			} else {
+				if horizontal == nil || contact.Depth > horizontal.Depth {
+					horizontal = contact
+				}
+			}
 		}
 	}
 
-	if deepestY != nil {
-		n := deepestY.Normal[1]
-		d := max(deepestY.Depth, Epsilon)
-
-		info.nextPosition[1] += n * d
-
-		if (n < 0 && info.Velocity[1] > 0) || (n > 0 && info.Velocity[1] < 0) {
-			info.Velocity[1] = 0
-		}
-		if n < 0 {
+	// Resolve vertical first (slopes or flat floors)
+	if slope != nil {
+		resolveStaticSlopeCollision(info, slope)
+		info.OnGround = true
+	} else if vertical != nil {
+		if resolveStaticVerticalCollision(info, vertical) {
 			info.OnGround = true
 		}
 	}
 
-	if deepestX != nil {
-		n := deepestX.Normal[0]
-		d := max(deepestX.Depth, Epsilon)
+	// Then resolve horizontal (walls)
+	if horizontal != nil {
+		resolveStaticHorizontalCollision(info, horizontal)
+	}
+}
 
-		info.nextPosition[0] += n * d
+func resolveStaticSlopeCollision(info *ColliderInfo, contact *Collision) {
+	// First, push out of the slope along the normal
+	info.nextPosition[0] += contact.Normal[0] * contact.Depth
+	info.nextPosition[1] += contact.Normal[1] * contact.Depth
 
-		if (n < 0 && info.Velocity[0] > 0) || (n > 0 && info.Velocity[0] < 0) {
-			info.Velocity[0] = 0
+	if contact.Normal[1] < 0 { // Ground slope (normal points up)
+		// Always zero out vertical velocity when grounded on a slope
+		// This prevents gravity from pulling the character down the slope
+		info.Velocity[1] = 0
+	} else {
+		// For ceiling slopes, just remove velocity into surface
+		dotProduct := info.Velocity[0]*contact.Normal[0] + info.Velocity[1]*contact.Normal[1]
+		if dotProduct < 0 {
+			info.Velocity[0] -= contact.Normal[0] * dotProduct
+			info.Velocity[1] -= contact.Normal[1] * dotProduct
 		}
+	}
+}
+
+func resolveStaticVerticalCollision(info *ColliderInfo, contact *Collision) bool {
+	info.nextPosition[1] += contact.Normal[1] * contact.Depth
+
+	// Only zero velocity if moving into the surface
+	if (contact.Normal[1] < 0 && info.Velocity[1] > 0) ||
+		(contact.Normal[1] > 0 && info.Velocity[1] < 0) {
+		info.Velocity[1] = 0
+	}
+
+	return contact.Normal[1] < 0 // Grounded if normal points up
+}
+
+func resolveStaticHorizontalCollision(info *ColliderInfo, contact *Collision) {
+	info.nextPosition[0] += contact.Normal[0] * contact.Depth
+
+	// Only zero velocity if moving into the surface
+	if (contact.Normal[0] < 0 && info.Velocity[0] > 0) ||
+		(contact.Normal[0] > 0 && info.Velocity[0] < 0) {
+		info.Velocity[0] = 0
 	}
 }
