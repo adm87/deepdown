@@ -154,6 +154,8 @@ type TriangleCollider struct {
 }
 
 func (tc *TriangleCollider) AABB() (minX, minY, maxX, maxY float32) {
+	minX, minY = tc.Min()
+	maxX, maxY = tc.Max()
 	return
 }
 

@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	GridCellSize float32 = 8.0
+	GridCellSize float32 = 16.0
 	Gravity      float32 = 400.0
 	Epsilon      float32 = 0.0001
 
@@ -98,10 +98,10 @@ func (w *World) QueryBodyCells(minX, minY, maxX, maxY float32) []uint64 {
 func (w *World) insert(collider Collider, grid *hash.Grid[Collider]) {
 	minX, minY, maxX, maxY := collider.AABB()
 	switch c := collider.(type) {
-	case *TriangleCollider:
-		grid.InsertFunc(c, minX, minY, maxX, maxY, hash.NoGridPadding, func(cMinX, cMinY, cMaxX, cMaxY float32) bool {
-			return c.Triangle.IntersectsAABB(cMinX, cMinY, cMaxX, cMaxY)
-		})
+	// case *TriangleCollider:
+	// 	grid.InsertFunc(c, minX, minY, maxX, maxY, hash.NoGridPadding, func(cMinX, cMinY, cMaxX, cMaxY float32) bool {
+	// 		return c.Triangle.IntersectsAABB(cMinX, cMinY, cMaxX, cMaxY)
+	// 	})
 	default:
 		grid.Insert(c, minX, minY, maxX, maxY, hash.NoGridPadding)
 	}

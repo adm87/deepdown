@@ -14,9 +14,9 @@ const (
 // Triangle represents a right-angled triangle defined by three points.
 type Triangle struct {
 	X, Y       float32
-	Nx, Ny     float32
 	minX, minY float32
 	maxX, maxY float32
+	normal     [2]float32
 	points     [6]float32
 	slopeType  SlopeType
 }
@@ -31,7 +31,13 @@ func NewTriangle(x, y float32, points [6]float32) Triangle {
 }
 
 func (t *Triangle) SetPoints(points [6]float32) {
-	t.minX, t.minY, t.maxX, t.maxY = computeAABB(points[:])
+	points = EnsureCCWTriangle(points)
+
+	if !IsRightAngledTriangle(points) {
+		panic("triangle must be right-angled")
+	}
+
+	t.minX, t.minY, t.maxX, t.maxY = ComputeAABB(points)
 	t.points = points
 }
 
@@ -65,18 +71,11 @@ func (t *Triangle) ContainsPoint(px, py float32) bool {
 	return !(hasNeg && hasPos)
 }
 
-// ========== AABB interface ==========
-
-func (t *Triangle) Min() (x, y float32) {
-	return t.X + t.minX, t.Y + t.minY
-}
-
-func (t *Triangle) Max() (x, y float32) {
-	return t.X + t.maxX, t.Y + t.maxY
-}
-
 func (t *Triangle) IntersectsAABB(minX, minY, maxX, maxY float32) bool {
-	if t.X+t.maxX < minX || t.X+t.minX > maxX || t.Y+t.maxY < minY || t.Y+t.minY > maxY {
+	tMinX, tMinY := t.Min()
+	tMaxX, tMaxY := t.Max()
+
+	if t.X+tMaxX < minX || t.X+tMinX > maxX || t.Y+tMaxY < minY || t.Y+tMinY > maxY {
 		return false
 	}
 
@@ -98,3 +97,69 @@ func (t *Triangle) IntersectsAABB(minX, minY, maxX, maxY float32) bool {
 }
 
 // ========== AABB interface ==========
+
+func (t *Triangle) Min() (x, y float32) {
+	return t.X + t.minX, t.Y + t.minY
+}
+
+func (t *Triangle) Max() (x, y float32) {
+	return t.X + t.maxX, t.Y + t.maxY
+}
+
+// ========== AABB interface ==========
+
+func TriangleArea(p0, p1, p2 [2]float32) float32 {
+	return 0.5 * (p0[0]*(p1[1]-p2[1]) + p1[0]*(p2[1]-p0[1]) + p2[0]*(p0[1]-p1[1]))
+}
+
+func EnsureCCWTriangle(points [6]float32) [6]float32 {
+	p0 := [2]float32{points[0], points[1]}
+	p1 := [2]float32{points[2], points[3]}
+	p2 := [2]float32{points[4], points[5]}
+	switch area := TriangleArea(p0, p1, p2); {
+	case area > 0:
+		return points
+	case area < 0:
+		return [6]float32{p0[0], p0[1], p2[0], p2[1], p1[0], p1[1]}
+	default:
+		panic("triangle area cannot be zero")
+	}
+}
+
+func IsRightAngledTriangle(points [6]float32) bool {
+	p0 := [2]float32{points[0], points[1]}
+	p1 := [2]float32{points[2], points[3]}
+	p2 := [2]float32{points[4], points[5]}
+	vectors := [][2][2]float32{
+		{{p1[0] - p0[0], p1[1] - p0[1]}, {p2[0] - p0[0], p2[1] - p0[1]}},
+		{{p0[0] - p1[0], p0[1] - p1[1]}, {p2[0] - p1[0], p2[1] - p1[1]}},
+		{{p0[0] - p2[0], p0[1] - p2[1]}, {p1[0] - p2[0], p1[1] - p2[1]}},
+	}
+	for _, v := range vectors {
+		if v[0][0]*v[1][0]+v[0][1]*v[1][1] == 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func ComputeAABB(points [6]float32) (minX, minY, maxX, maxY float32) {
+	minX, minY = points[0], points[1]
+	maxX, maxY = points[0], points[1]
+
+	for i := 2; i < len(points); i += 2 {
+		x, y := points[i], points[i+1]
+		if x < minX {
+			minX = x
+		} else if x > maxX {
+			maxX = x
+		}
+		if y < minY {
+			minY = y
+		} else if y > maxY {
+			maxY = y
+		}
+	}
+
+	return
+}
