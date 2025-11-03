@@ -20,7 +20,7 @@ const (
 	TargetWidth  = 1280
 	TargetHeight = 720
 
-	Scale         = 0.16
+	Scale         = 0.185
 	MaxFixedSteps = 5
 )
 

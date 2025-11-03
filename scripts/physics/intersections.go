@@ -72,6 +72,14 @@ func BoxVsBox(b1, b2 *BoxCollider) (Collision, bool) {
 func BoxVsTriangle(box *BoxCollider, tri *TriangleCollider) (Collision, bool) {
 	var contact Collision
 
+	minXA, minYA, maxXA, maxYA := box.AABB()
+	minXB, minYB, maxXB, maxYB := tri.AABB()
+
+	// Check for separation
+	if minXA >= maxXB || maxXA <= minXB || minYA >= maxYB || maxYA <= minYB {
+		return contact, false
+	}
+
 	return contact, false
 }
 

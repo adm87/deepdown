@@ -16,6 +16,8 @@ type Triangle struct {
 	X, Y       float32
 	minX, minY float32
 	maxX, maxY float32
+	slope      [2][2]float32
+	corner     [2]float32
 	normal     [2]float32
 	points     [6]float32
 	slopeType  SlopeType
@@ -38,7 +40,17 @@ func (t *Triangle) SetPoints(points [6]float32) {
 	}
 
 	t.minX, t.minY, t.maxX, t.maxY = ComputeAABB(points)
+	t.slope, t.corner, t.slopeType = FindSlope(points)
+	t.normal = ComputeSlopeNormal(t.slope[0], t.slope[1])
 	t.points = points
+}
+
+func (t *Triangle) Slope() [2][2]float32 {
+	return t.slope
+}
+
+func (t *Triangle) SlopeNormal() [2]float32 {
+	return t.normal
 }
 
 func (t *Triangle) SlopeType() SlopeType {

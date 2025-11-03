@@ -208,16 +208,46 @@ func (l *Level) DrawPotentialCollisions(screen *ebiten.Image, mat ebiten.GeoM, c
 	path := vector.Path{}
 
 	for i := range colliders {
-		cMinX, cMinY, cMaxX, cMaxY := colliders[i].AABB()
+		c := colliders[i]
+		switch c.(type) {
+		case *physics.BoxCollider:
+			cMinX, cMinY, cMaxX, cMaxY := c.AABB()
 
-		minX, minY := mat.Apply(float64(cMinX), float64(cMinY))
-		maxX, maxY := mat.Apply(float64(cMaxX), float64(cMaxY))
+			minX, minY := mat.Apply(float64(cMinX), float64(cMinY))
+			maxX, maxY := mat.Apply(float64(cMaxX), float64(cMaxY))
 
-		path.MoveTo(float32(minX), float32(minY))
-		path.LineTo(float32(maxX), float32(minY))
-		path.LineTo(float32(maxX), float32(maxY))
-		path.LineTo(float32(minX), float32(maxY))
-		path.LineTo(float32(minX), float32(minY))
+			path.MoveTo(float32(minX), float32(minY))
+			path.LineTo(float32(maxX), float32(minY))
+			path.LineTo(float32(maxX), float32(maxY))
+			path.LineTo(float32(minX), float32(maxY))
+			path.LineTo(float32(minX), float32(minY))
+
+		case *physics.TriangleCollider:
+			tri := c.(*physics.TriangleCollider)
+			for i := 0; i < 3; i++ {
+				x, y := tri.GetVertex(i)
+				x64, y64 := mat.Apply(float64(x), float64(y))
+				if i == 0 {
+					path.MoveTo(float32(x64), float32(y64))
+				} else {
+					path.LineTo(float32(x64), float32(y64))
+				}
+			}
+			// Close the triangle
+			x, y := tri.GetVertex(0)
+			x64, y64 := mat.Apply(float64(x), float64(y))
+			path.LineTo(float32(x64), float32(y64))
+
+			minX, minY, maxX, maxY := tri.AABB()
+			centerX := (minX + maxX) / 2
+			centerY := (minY + maxY) / 2
+			nX, nY := tri.SlopeNormal()[0], tri.SlopeNormal()[1]
+			endX64, endY64 := mat.Apply(float64(centerX+nX*5), float64(centerY+nY*5))
+			startX64, startY64 := mat.Apply(float64(centerX), float64(centerY))
+
+			path.MoveTo(float32(startX64), float32(startY64))
+			path.LineTo(float32(endX64), float32(endY64))
+		}
 	}
 
 	op := &vector.DrawPathOptions{}
