@@ -82,6 +82,7 @@
         "assets/tilemaps/gym_collision.tmx"
     ],
     "project": "deepdown.tiled-project",
+    "property.type": "CollisionRole",
     "recentFiles": [
         "assets/tilesheets/sample-sheet.tsx",
         "assets/tilemaps/gym_collision.tmx",

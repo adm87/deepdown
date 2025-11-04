@@ -111,9 +111,10 @@ func (w *World) preupdate(dt float64, activeBodies []Collider) {
 	for i := range activeBodies {
 		info := activeBodies[i].Info()
 
-		info.Velocity[1] = clamp(info.Velocity[1]+Gravity*float32(dt), MaxVelocityRiseSpeed, MaxVelocityFallSpeed)
-
-		x, y := activeBodies[i].Position()
+		info.OnGround = w.isGrounded(activeBodies[i], info)
+		if !info.OnGround {
+			info.Velocity[1] = clamp(info.Velocity[1]+Gravity*float32(dt), MaxVelocityRiseSpeed, MaxVelocityFallSpeed)
+		}
 
 		if math.Abs(float64(info.Velocity[0])) < MinimumVelocityThreshold {
 			info.Velocity[0] = 0
@@ -121,6 +122,8 @@ func (w *World) preupdate(dt float64, activeBodies []Collider) {
 		if math.Abs(float64(info.Velocity[1])) < MinimumVelocityThreshold {
 			info.Velocity[1] = 0
 		}
+
+		x, y := activeBodies[i].Position()
 
 		if info.Velocity[0] == 0 && info.Velocity[1] == 0 {
 			info.nextPosition[0] = x
@@ -182,13 +185,15 @@ func (w *World) handleCollisions(activeBodies []Collider) {
 			}
 		}
 
-		w.resolveStaticContacts(info)
+		// w.resolveStaticContacts(info)
 	}
 }
 
-func (w *World) resolveStaticContacts(info *ColliderInfo) {
-	info.OnGround = false
+func (w *World) isGrounded(collider Collider, info *ColliderInfo) bool {
+	return false // or true if ground is close enough
+}
 
+func (w *World) resolveStaticContacts(info *ColliderInfo) {
 	if len(info.collisions) == 0 {
 		return
 	}
@@ -218,7 +223,6 @@ func (w *World) resolveStaticContacts(info *ColliderInfo) {
 		}
 	}
 
-	// Resolve vertical first (slopes or flat floors)
 	if slope != nil {
 		resolveStaticSlopeCollision(info, slope)
 		info.OnGround = true
@@ -228,23 +232,18 @@ func (w *World) resolveStaticContacts(info *ColliderInfo) {
 		}
 	}
 
-	// Then resolve horizontal (walls)
 	if horizontal != nil {
 		resolveStaticHorizontalCollision(info, horizontal)
 	}
 }
 
 func resolveStaticSlopeCollision(info *ColliderInfo, contact *Collision) {
-	// First, push out of the slope along the normal
 	info.nextPosition[0] += contact.Normal[0] * contact.Depth
 	info.nextPosition[1] += contact.Normal[1] * contact.Depth
 
-	if contact.Normal[1] < 0 { // Ground slope (normal points up)
-		// Always zero out vertical velocity when grounded on a slope
-		// This prevents gravity from pulling the character down the slope
+	if contact.Normal[1] < 0 {
 		info.Velocity[1] = 0
 	} else {
-		// For ceiling slopes, just remove velocity into surface
 		dotProduct := info.Velocity[0]*contact.Normal[0] + info.Velocity[1]*contact.Normal[1]
 		if dotProduct < 0 {
 			info.Velocity[0] -= contact.Normal[0] * dotProduct
@@ -256,19 +255,17 @@ func resolveStaticSlopeCollision(info *ColliderInfo, contact *Collision) {
 func resolveStaticVerticalCollision(info *ColliderInfo, contact *Collision) bool {
 	info.nextPosition[1] += contact.Normal[1] * contact.Depth
 
-	// Only zero velocity if moving into the surface
 	if (contact.Normal[1] < 0 && info.Velocity[1] > 0) ||
 		(contact.Normal[1] > 0 && info.Velocity[1] < 0) {
 		info.Velocity[1] = 0
 	}
 
-	return contact.Normal[1] < 0 // Grounded if normal points up
+	return contact.Normal[1] < 0
 }
 
 func resolveStaticHorizontalCollision(info *ColliderInfo, contact *Collision) {
 	info.nextPosition[0] += contact.Normal[0] * contact.Depth
 
-	// Only zero velocity if moving into the surface
 	if (contact.Normal[0] < 0 && info.Velocity[0] > 0) ||
 		(contact.Normal[0] > 0 && info.Velocity[0] < 0) {
 		info.Velocity[0] = 0

@@ -62,6 +62,10 @@ func (l *Level) SetTmx(tmx *tiled.Tmx) error {
 	l.tilemap.SetTmx(tmx)
 	l.tilemap.Frame().Set(l.camera.Viewport())
 
+	if err := l.BuildStaticCollision(tiled.ObjectGroupByName(tmx, "Floors")); err != nil {
+		return err
+	}
+
 	if err := l.BuildStaticCollision(tiled.ObjectGroupByName(tmx, "Static")); err != nil {
 		return err
 	}
@@ -74,7 +78,7 @@ func (l *Level) SetTmx(tmx *tiled.Tmx) error {
 	return nil
 }
 
-func (l *Level) Update(dt float64) {
+func (l *Level) Update(dts float64) {
 	if input.IsActive(actions.MoveLeft) {
 		l.player.Velocity[0] -= actions.MovementSpeed
 	}

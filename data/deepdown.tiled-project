@@ -10,5 +10,17 @@
     "properties": [
     ],
     "propertyTypes": [
+        {
+            "id": 1,
+            "name": "CollisionRole",
+            "storageType": "int",
+            "type": "enum",
+            "values": [
+                "None",
+                "Wall",
+                "Floor"
+            ],
+            "valuesAsFlags": true
+        }
     ]
 }

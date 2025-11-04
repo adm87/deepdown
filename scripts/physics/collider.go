@@ -18,6 +18,7 @@ type ColliderInfo struct {
 	id    uint32
 	Layer Layer
 	State State
+	Role  Role
 	Type  Type
 	Mode  Mode
 
@@ -39,6 +40,31 @@ type Collision struct {
 	Depth  float32
 
 	other Collider
+}
+
+// =========== Collision Role ==========
+
+type Role uint8
+
+const (
+	CollisionRoleNone  Role = 0
+	CollisionRoleWall  Role = 1 << 0
+	CollisionRoleFloor Role = 1 << 1
+)
+
+func (cr Role) String() string {
+	switch cr {
+	case CollisionRoleWall:
+		return "Wall"
+	case CollisionRoleFloor:
+		return "Floor"
+	default:
+		return "None"
+	}
+}
+
+func (cr Role) IsValid() bool {
+	return cr <= CollisionRoleFloor
 }
 
 // =========== Collider Types ==========

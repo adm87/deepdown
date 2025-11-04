@@ -1,6 +1,8 @@
 package level
 
 import (
+	"strconv"
+
 	"github.com/adm87/deepdown/scripts/physics"
 	"github.com/adm87/tiled"
 	"github.com/adm87/tiled/tilemap"
@@ -23,6 +25,16 @@ func (l *Level) BuildStaticCollision(collisionGroup *tiled.ObjectGroup) error {
 			collider = physics.GetBoxCollider(obj.X, obj.Y, obj.Width, obj.Height)
 		}
 
+		var role physics.Role
+		if prop := tiled.PropertyByType(obj.Properties, "CollisionRole"); prop != nil {
+			bit, err := strconv.Atoi(prop.Value)
+			if err != nil {
+				return err
+			}
+			role = physics.Role(bit >> 1)
+		}
+
+		collider.Info().Role = role
 		collider.Info().State = physics.ColliderStateStatic
 
 		l.world.AddCollider(collider)
