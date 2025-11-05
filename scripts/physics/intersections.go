@@ -68,6 +68,8 @@ func BoxVsBox(b1, b2 *BoxCollider) (Collision, bool) {
 		contact.Depth = overlapY
 	}
 
+	contact.other = b2
+
 	return contact, true
 }
 

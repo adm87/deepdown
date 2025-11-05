@@ -28,6 +28,14 @@ type ColliderInfo struct {
 	collisions []Collision
 }
 
+func (ci *ColliderInfo) IsFloor() bool {
+	return ci.Role&CollisionRoleFloor != 0
+}
+
+func (ci *ColliderInfo) IsWall() bool {
+	return ci.Role&CollisionRoleWall != 0
+}
+
 type Movement struct {
 	Velocity [2]float32 // Velocity
 
@@ -181,8 +189,18 @@ type TriangleCollider struct {
 }
 
 func (tc *TriangleCollider) AABB() (minX, minY, maxX, maxY float32) {
-	minX, minY = tc.Min()
-	maxX, maxY = tc.Max()
+	// Get bounds in world space (includes tc.X, tc.Y from last finalized position)
+	minX, minY = tc.Triangle.Min()
+	maxX, maxY = tc.Triangle.Max()
+
+	// Convert from finalized position to current frame's position
+	offsetX := tc.nextPosition[0] - tc.X + tc.Offset[0]
+	offsetY := tc.nextPosition[1] - tc.Y + tc.Offset[1]
+
+	minX += offsetX
+	minY += offsetY
+	maxX += offsetX
+	maxY += offsetY
 	return
 }
 
@@ -199,5 +217,7 @@ func (tc *TriangleCollider) Position() (x, y float32) {
 }
 
 func (tc *TriangleCollider) SetPosition(x, y float32) {
+	tc.prevPosition[0], tc.prevPosition[1] = tc.X, tc.Y
 	tc.X, tc.Y = x, y
+	tc.nextPosition[0], tc.nextPosition[1] = x, y
 }

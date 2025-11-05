@@ -4,6 +4,7 @@ import (
 	"math"
 
 	"github.com/adm87/deepdown/scripts/deepdown"
+	"github.com/adm87/deepdown/scripts/geom"
 	"github.com/adm87/utilities/hash"
 )
 
@@ -15,6 +16,8 @@ const (
 	MinimumVelocityThreshold float64 = 0.01
 	MaxVelocityRiseSpeed     float32 = -150.0
 	MaxVelocityFallSpeed     float32 = 200.0
+
+	GroundCheckDistance float32 = 2.0
 )
 
 func clamp[T float32 | float64](value, min, max T) T {
@@ -111,9 +114,11 @@ func (w *World) preupdate(dt float64, activeBodies []Collider) {
 	for i := range activeBodies {
 		info := activeBodies[i].Info()
 
-		info.OnGround = w.isGrounded(activeBodies[i], info)
+		velY := clamp(info.Velocity[1]+Gravity*float32(dt), MaxVelocityRiseSpeed, MaxVelocityFallSpeed)
+
+		info.OnGround = w.isGrounded(activeBodies[i], info, velY*float32(dt))
 		if !info.OnGround {
-			info.Velocity[1] = clamp(info.Velocity[1]+Gravity*float32(dt), MaxVelocityRiseSpeed, MaxVelocityFallSpeed)
+			info.Velocity[1] = velY
 		}
 
 		if math.Abs(float64(info.Velocity[0])) < MinimumVelocityThreshold {
@@ -168,6 +173,8 @@ func (w *World) handleCollisions(activeBodies []Collider) {
 			continue
 		}
 
+		// ========== Check static collisions ==========
+
 		others := w.staticGrid.Query(activeBodies[i].AABB())
 		for j := range others {
 			otherInfo := others[j].Info()
@@ -185,15 +192,63 @@ func (w *World) handleCollisions(activeBodies []Collider) {
 			}
 		}
 
-		// w.resolveStaticContacts(info)
+		w.resolveStaticCollisions(info)
+
+		// ========== Check body collisions ==========
+
+		// TASK: Implement dynamic body collision detection and event dispatching
 	}
 }
 
-func (w *World) isGrounded(collider Collider, info *ColliderInfo) bool {
-	return false // or true if ground is close enough
+func (w *World) isGrounded(collider Collider, info *ColliderInfo, travelled float32) bool {
+	minX, minY, maxX, maxY := collider.AABB()
+	centerX := (minX + maxX) / 2
+	queryDistance := max(travelled, GroundCheckDistance)
+
+	others := w.staticGrid.Query(minX, minY, maxX, maxY+queryDistance)
+	for _, other := range others {
+		otherInfo := other.Info()
+		if otherInfo.Mode == CollisionModeIgnore || info.id == otherInfo.id {
+			continue
+		}
+
+		if !ShouldCollide(info.Layer, otherInfo.Layer) || !otherInfo.IsFloor() {
+			continue
+		}
+
+		var surfaceY float32
+		switch o := other.(type) {
+		case *BoxCollider:
+			oMinX, oMinY, oMaxX, _ := o.AABB()
+			if centerX < oMinX || centerX > oMaxX {
+				continue
+			}
+			surfaceY = oMinY
+
+		case *TriangleCollider:
+			oMinX, _, oMaxX, _ := o.AABB()
+			if centerX < oMinX || centerX > oMaxX {
+				continue
+			}
+			y, found := geom.FindTriangleSurfaceAt(centerX, &o.Triangle)
+			if !found {
+				continue
+			}
+			surfaceY = y
+
+		default:
+			continue
+		}
+
+		distance := surfaceY - maxY
+		if distance >= -0.5 && distance <= queryDistance {
+			return true
+		}
+	}
+	return false
 }
 
-func (w *World) resolveStaticContacts(info *ColliderInfo) {
+func (w *World) resolveStaticCollisions(info *ColliderInfo) {
 	if len(info.collisions) == 0 {
 		return
 	}
@@ -224,50 +279,48 @@ func (w *World) resolveStaticContacts(info *ColliderInfo) {
 	}
 
 	if slope != nil {
-		resolveStaticSlopeCollision(info, slope)
-		info.OnGround = true
+		w.resolveStaticSlopeCollision(info, slope)
 	} else if vertical != nil {
-		if resolveStaticVerticalCollision(info, vertical) {
-			info.OnGround = true
-		}
+		w.resolveStaticVerticalCollision(info, vertical)
 	}
 
 	if horizontal != nil {
-		resolveStaticHorizontalCollision(info, horizontal)
-	}
-}
-
-func resolveStaticSlopeCollision(info *ColliderInfo, contact *Collision) {
-	info.nextPosition[0] += contact.Normal[0] * contact.Depth
-	info.nextPosition[1] += contact.Normal[1] * contact.Depth
-
-	if contact.Normal[1] < 0 {
-		info.Velocity[1] = 0
-	} else {
-		dotProduct := info.Velocity[0]*contact.Normal[0] + info.Velocity[1]*contact.Normal[1]
-		if dotProduct < 0 {
-			info.Velocity[0] -= contact.Normal[0] * dotProduct
-			info.Velocity[1] -= contact.Normal[1] * dotProduct
+		otherInfo := horizontal.other.Info()
+		if slope != nil {
+			if otherInfo.IsWall() {
+				w.resolveStaticHorizontalCollision(info, horizontal)
+			}
+		} else {
+			w.resolveStaticHorizontalCollision(info, horizontal)
 		}
 	}
 }
 
-func resolveStaticVerticalCollision(info *ColliderInfo, contact *Collision) bool {
-	info.nextPosition[1] += contact.Normal[1] * contact.Depth
+func (w *World) resolveStaticSlopeCollision(info *ColliderInfo, col *Collision) {
+	info.nextPosition[0] += col.Normal[0] * col.Depth
+	info.nextPosition[1] += col.Normal[1] * col.Depth
 
-	if (contact.Normal[1] < 0 && info.Velocity[1] > 0) ||
-		(contact.Normal[1] > 0 && info.Velocity[1] < 0) {
+	if col.Normal[1] < 0 {
 		info.Velocity[1] = 0
+	} else {
+		dotProduct := info.Velocity[0]*col.Normal[0] + info.Velocity[1]*col.Normal[1]
+		if dotProduct < 0 {
+			info.Velocity[0] -= col.Normal[0] * dotProduct
+			info.Velocity[1] -= col.Normal[1] * dotProduct
+		}
 	}
-
-	return contact.Normal[1] < 0
 }
 
-func resolveStaticHorizontalCollision(info *ColliderInfo, contact *Collision) {
-	info.nextPosition[0] += contact.Normal[0] * contact.Depth
+func (w *World) resolveStaticVerticalCollision(info *ColliderInfo, col *Collision) {
+	info.nextPosition[1] += col.Normal[1] * col.Depth
+	if (col.Normal[1] < 0 && info.Velocity[1] > 0) || (col.Normal[1] > 0 && info.Velocity[1] < 0) {
+		info.Velocity[1] = 0
+	}
+}
 
-	if (contact.Normal[0] < 0 && info.Velocity[0] > 0) ||
-		(contact.Normal[0] > 0 && info.Velocity[0] < 0) {
+func (w *World) resolveStaticHorizontalCollision(info *ColliderInfo, col *Collision) {
+	info.nextPosition[0] += col.Normal[0] * col.Depth
+	if (col.Normal[0] < 0 && info.Velocity[0] > 0) || (col.Normal[0] > 0 && info.Velocity[0] < 0) {
 		info.Velocity[0] = 0
 	}
 }

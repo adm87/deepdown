@@ -5,21 +5,21 @@
     },
     "activeFile": "assets/tilemaps/gym_collision.tmx",
     "expandedProjectPaths": [
+        ".",
         "assets",
         "assets/tilemaps",
-        "assets/tilesheets",
-        "."
+        "assets/tilesheets"
     ],
     "fileStates": {
         "assets/tilemaps/gym_collision.tmx": {
             "expandedObjectLayers": [
                 2
             ],
-            "scale": 6.551041666666666,
+            "scale": 5.537708333333333,
             "selectedLayer": 2,
             "viewCenter": {
-                "x": 120.05724280489744,
-                "y": 80.0636031165527
+                "x": 119.99548549715963,
+                "y": 80.08728038824725
             }
         },
         "assets/tilemaps/gym_slopes.tmx": {
