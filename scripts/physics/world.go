@@ -220,7 +220,7 @@ func (w *World) isGrounded(collider Collider, info *ColliderInfo, travelled floa
 		switch o := other.(type) {
 		case *BoxCollider:
 			oMinX, oMinY, oMaxX, _ := o.AABB()
-			if centerX < oMinX || centerX > oMaxX {
+			if maxX <= oMinX || minX >= oMaxX {
 				continue
 			}
 			surfaceY = oMinY
