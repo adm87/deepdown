@@ -8,6 +8,7 @@ import (
 var (
 	DrawCollisionCells      = false
 	DrawPotentialCollisions = false
+	DrawTilemap             = true
 )
 
 func PollInput() error {
@@ -17,6 +18,10 @@ func PollInput() error {
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyF11) {
 		ebiten.SetFullscreen(!ebiten.IsFullscreen())
+	}
+
+	if inpututil.IsKeyJustPressed(ebiten.KeyF8) {
+		DrawTilemap = !DrawTilemap
 	}
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyF9) {

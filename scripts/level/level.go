@@ -21,10 +21,17 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/vector"
 )
 
+const CoyoteTime float32 = 0.1
+
 type Player struct {
 	physics.BoxCollider
 
 	Data tilemap.Data
+}
+
+func (p *Player) CanJump() bool {
+	info := p.Info()
+	return info.TimeSinceLeftGround() <= CoyoteTime
 }
 
 type Level struct {
@@ -86,7 +93,7 @@ func (l *Level) Update(dts float64) {
 		l.player.Velocity[0] += actions.MovementSpeed
 	}
 	if jump := input.GetBinding[*input.KeyPressDurationBinding](actions.Jump); jump != nil {
-		if l.player.OnGround && jump.JustReleased() {
+		if l.player.CanJump() && jump.JustReleased() {
 			pressure := jump.Pressure()
 			l.player.Velocity[1] = actions.JumpVelocity * float32(pressure)
 			l.player.OnGround = false
@@ -116,11 +123,12 @@ func (l *Level) Draw(screen *ebiten.Image) {
 	mat := l.camera.Matrix()
 	itr := l.tilemap.Itr()
 
-	for tiles := itr.Next(); tiles != nil; tiles = itr.Next() {
-		l.DrawTileBatch(screen, tiles, mat)
+	if debug.DrawTilemap {
+		for tiles := itr.Next(); tiles != nil; tiles = itr.Next() {
+			l.DrawTileBatch(screen, tiles, mat)
+		}
+		l.DrawTile(&l.player.Data, screen, mat)
 	}
-
-	l.DrawTile(&l.player.Data, screen, mat)
 
 	if debug.DrawCollisionCells {
 		l.DrawCollisionCells(screen, mat, l.world.QueryStaticCells(l.camera.Viewport()), color.RGBA{R: 255, A: 255})

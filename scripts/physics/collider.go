@@ -25,6 +25,8 @@ type ColliderInfo struct {
 	OnGround bool
 	Offset   [2]float32
 
+	timeSinceLeftGround float32
+
 	collisions []Collision
 }
 
@@ -34,6 +36,10 @@ func (ci *ColliderInfo) IsFloor() bool {
 
 func (ci *ColliderInfo) IsWall() bool {
 	return ci.Role&CollisionRoleWall != 0
+}
+
+func (ci *ColliderInfo) TimeSinceLeftGround() float32 {
+	return ci.timeSinceLeftGround
 }
 
 type Movement struct {

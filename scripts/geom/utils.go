@@ -89,6 +89,17 @@ func FindTriangleSurfaceAt(x float32, triangle *Triangle) (surfaceY float32, fou
 	return 0, false
 }
 
+func FindRectangleSurfaceAt(x float32, box *Rectangle) (surfaceY float32, found bool) {
+	minX, minY := box.Min()
+	maxX, _ := box.Max()
+
+	if x >= minX && x <= maxX {
+		return minY, true
+	}
+
+	return 0, false
+}
+
 func Distance(p1, p2 [2]float32) float32 {
 	dx := p2[0] - p1[0]
 	dy := p2[1] - p1[1]

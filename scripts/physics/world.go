@@ -17,7 +17,7 @@ const (
 	MaxVelocityRiseSpeed     float32 = -150.0
 	MaxVelocityFallSpeed     float32 = 200.0
 
-	GroundCheckDistance float32 = 2.0
+	GroundCheckDistance float32 = 1
 )
 
 func clamp[T float32 | float64](value, min, max T) T {
@@ -117,6 +117,13 @@ func (w *World) preupdate(dt float64, activeBodies []Collider) {
 		velY := clamp(info.Velocity[1]+Gravity*float32(dt), MaxVelocityRiseSpeed, MaxVelocityFallSpeed)
 
 		info.OnGround = w.isGrounded(activeBodies[i], info, velY*float32(dt))
+
+		if info.OnGround {
+			info.timeSinceLeftGround = 0
+		} else {
+			info.timeSinceLeftGround += float32(dt)
+		}
+
 		if !info.OnGround {
 			info.Velocity[1] = velY
 		}
@@ -139,7 +146,7 @@ func (w *World) preupdate(dt float64, activeBodies []Collider) {
 		info.nextPosition[0] = x + info.Velocity[0]*float32(dt)
 		info.nextPosition[1] = y + info.Velocity[1]*float32(dt)
 
-		info.Velocity[0] *= 0.8
+		info.Velocity[0] *= 0.75
 	}
 }
 
