@@ -67,18 +67,31 @@ const (
 )
 
 func (cr Role) String() string {
-	switch cr {
-	case CollisionRoleWall:
-		return "Wall"
-	case CollisionRoleFloor:
-		return "Floor"
-	default:
+	if cr == CollisionRoleNone {
 		return "None"
 	}
+
+	var result string
+	if cr&CollisionRoleWall != 0 {
+		result = "Wall"
+	}
+	if cr&CollisionRoleFloor != 0 {
+		if result != "" {
+			result += "|Floor"
+		} else {
+			result = "Floor"
+		}
+	}
+
+	if result == "" {
+		return "Unknown"
+	}
+	return result
 }
 
 func (cr Role) IsValid() bool {
-	return cr <= CollisionRoleFloor
+	const allRoles = CollisionRoleWall | CollisionRoleFloor
+	return cr <= allRoles
 }
 
 // =========== Collider Types ==========
@@ -141,6 +154,8 @@ const (
 
 func (cm Mode) String() string {
 	switch cm {
+	case CollisionModeIgnore:
+		return "Ignore"
 	case CollisionModeDiscrete:
 		return "Discrete"
 	case CollisionModeContinuous:

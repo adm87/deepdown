@@ -17,7 +17,10 @@ const (
 	MaxVelocityRiseSpeed     float32 = -150.0
 	MaxVelocityFallSpeed     float32 = 200.0
 
-	GroundCheckDistance float32 = 1
+	GroundCheckDistance  float32 = 1.0
+	GroundCheckTolerance float32 = 0.5
+
+	VelocityDamping float32 = 0.75
 )
 
 func clamp[T float32 | float64](value, min, max T) T {
@@ -114,20 +117,25 @@ func (w *World) preupdate(dt float64, activeBodies []Collider) {
 	for i := range activeBodies {
 		info := activeBodies[i].Info()
 
+		// Apply gravity and clamp vertical velocity
 		velY := clamp(info.Velocity[1]+Gravity*float32(dt), MaxVelocityRiseSpeed, MaxVelocityFallSpeed)
 
+		// Check ground state
 		info.OnGround = w.isGrounded(activeBodies[i], info, velY*float32(dt))
 
+		// Update coyote time tracking
 		if info.OnGround {
 			info.timeSinceLeftGround = 0
 		} else {
 			info.timeSinceLeftGround += float32(dt)
 		}
 
+		// Apply vertical velocity only when airborne
 		if !info.OnGround {
 			info.Velocity[1] = velY
 		}
 
+		// Zero out negligible velocities
 		if math.Abs(float64(info.Velocity[0])) < MinimumVelocityThreshold {
 			info.Velocity[0] = 0
 		}
@@ -135,8 +143,8 @@ func (w *World) preupdate(dt float64, activeBodies []Collider) {
 			info.Velocity[1] = 0
 		}
 
+		// Calculate next position
 		x, y := activeBodies[i].Position()
-
 		if info.Velocity[0] == 0 && info.Velocity[1] == 0 {
 			info.nextPosition[0] = x
 			info.nextPosition[1] = y
@@ -146,7 +154,8 @@ func (w *World) preupdate(dt float64, activeBodies []Collider) {
 		info.nextPosition[0] = x + info.Velocity[0]*float32(dt)
 		info.nextPosition[1] = y + info.Velocity[1]*float32(dt)
 
-		info.Velocity[0] *= 0.75
+		// Apply horizontal damping
+		info.Velocity[0] *= VelocityDamping
 	}
 }
 
@@ -226,6 +235,7 @@ func (w *World) isGrounded(collider Collider, info *ColliderInfo, travelled floa
 		var surfaceY float32
 		switch o := other.(type) {
 		case *BoxCollider:
+			// Check horizontal overlap for box colliders
 			oMinX, oMinY, oMaxX, _ := o.AABB()
 			if maxX <= oMinX || minX >= oMaxX {
 				continue
@@ -233,6 +243,7 @@ func (w *World) isGrounded(collider Collider, info *ColliderInfo, travelled floa
 			surfaceY = oMinY
 
 		case *TriangleCollider:
+			// Check if center point is within triangle bounds
 			oMinX, _, oMaxX, _ := o.AABB()
 			if centerX < oMinX || centerX > oMaxX {
 				continue
@@ -247,8 +258,9 @@ func (w *World) isGrounded(collider Collider, info *ColliderInfo, travelled floa
 			continue
 		}
 
+		// Check if within ground detection range
 		distance := surfaceY - maxY
-		if distance >= -0.5 && distance <= queryDistance {
+		if distance >= -GroundCheckTolerance && distance <= queryDistance {
 			return true
 		}
 	}
@@ -304,12 +316,15 @@ func (w *World) resolveStaticCollisions(info *ColliderInfo) {
 }
 
 func (w *World) resolveStaticSlopeCollision(info *ColliderInfo, col *Collision) {
+	// Move out of collision along slope normal
 	info.nextPosition[0] += col.Normal[0] * col.Depth
 	info.nextPosition[1] += col.Normal[1] * col.Depth
 
 	if col.Normal[1] < 0 {
+		// Colliding with ceiling - stop upward velocity
 		info.Velocity[1] = 0
 	} else {
+		// Redirect velocity along slope surface
 		dotProduct := info.Velocity[0]*col.Normal[0] + info.Velocity[1]*col.Normal[1]
 		if dotProduct < 0 {
 			info.Velocity[0] -= col.Normal[0] * dotProduct
@@ -319,14 +334,20 @@ func (w *World) resolveStaticSlopeCollision(info *ColliderInfo, col *Collision) 
 }
 
 func (w *World) resolveStaticVerticalCollision(info *ColliderInfo, col *Collision) {
+	// Move out of collision vertically
 	info.nextPosition[1] += col.Normal[1] * col.Depth
+
+	// Stop velocity if moving into the collision
 	if (col.Normal[1] < 0 && info.Velocity[1] > 0) || (col.Normal[1] > 0 && info.Velocity[1] < 0) {
 		info.Velocity[1] = 0
 	}
 }
 
 func (w *World) resolveStaticHorizontalCollision(info *ColliderInfo, col *Collision) {
+	// Move out of collision horizontally
 	info.nextPosition[0] += col.Normal[0] * col.Depth
+
+	// Stop velocity if moving into the collision
 	if (col.Normal[0] < 0 && info.Velocity[0] > 0) || (col.Normal[0] > 0 && info.Velocity[0] < 0) {
 		info.Velocity[0] = 0
 	}
