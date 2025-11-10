@@ -145,7 +145,7 @@
    </properties>
   </object>
  </objectgroup>
- <objectgroup id="3" name="Player" locked="1">
-  <object id="9" gid="106" x="116" y="96.15" width="8" height="8"/>
+ <objectgroup id="3" name="Player">
+  <object id="9" gid="106" x="116" y="96" width="8" height="8"/>
  </objectgroup>
 </map>

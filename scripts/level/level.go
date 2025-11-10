@@ -1,59 +1,49 @@
 package level
 
 import (
-	"fmt"
 	"image"
 	"image/color"
 	"math"
 
 	"github.com/adm87/deepdown/scripts/assets"
 	"github.com/adm87/deepdown/scripts/camera"
+	"github.com/adm87/deepdown/scripts/components"
 	"github.com/adm87/deepdown/scripts/debug"
 	"github.com/adm87/deepdown/scripts/deepdown"
-	"github.com/adm87/deepdown/scripts/input"
-	"github.com/adm87/deepdown/scripts/input/actions"
+	"github.com/adm87/deepdown/scripts/ecs"
+	"github.com/adm87/deepdown/scripts/ecs/entity"
 	"github.com/adm87/deepdown/scripts/physics"
 	"github.com/adm87/tiled"
 	"github.com/adm87/tiled/tilemap"
 	"github.com/adm87/utilities/hash"
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 )
-
-const CoyoteTime float32 = 0.1
-
-type Player struct {
-	physics.BoxCollider
-
-	Data tilemap.Data
-}
-
-func (p *Player) CanJump() bool {
-	info := p.Info()
-	return info.TimeSinceLeftGround() <= CoyoteTime
-}
 
 type Level struct {
 	ctx deepdown.Context
 
 	tilemap *tilemap.Map
 	camera  *camera.Camera
-	player  *Player
 
-	world *physics.World
+	player entity.Entity
+
+	ecs     *ecs.World
+	physics *physics.World
 
 	op ebiten.DrawImageOptions
 }
 
 func NewLevel(ctx deepdown.Context, targetWidth, targetHeight float32) *Level {
-	world := physics.NewWorld(ctx)
+	p := physics.NewWorld()
+	e := ecs.NewWorld()
 	return &Level{
 		ctx:     ctx,
 		tilemap: tilemap.NewMap(),
 		camera:  camera.NewCamera(0, 0, targetWidth, targetHeight),
 		op:      ebiten.DrawImageOptions{},
-		world:   world,
+		ecs:     e,
+		physics: p,
 	}
 }
 
@@ -86,31 +76,33 @@ func (l *Level) SetTmx(tmx *tiled.Tmx) error {
 }
 
 func (l *Level) Update(dts float64) {
-	if input.IsActive(actions.MoveLeft) {
-		l.player.Velocity[0] -= actions.MovementSpeed
-	}
-	if input.IsActive(actions.MoveRight) {
-		l.player.Velocity[0] += actions.MovementSpeed
-	}
-	if jump := input.GetBinding[*input.KeyPressDurationBinding](actions.Jump); jump != nil {
-		if l.player.CanJump() && jump.JustReleased() {
-			pressure := jump.Pressure()
-			l.player.Velocity[1] = actions.JumpVelocity * float32(pressure)
-			l.player.OnGround = false
-		}
-	}
+	// if input.IsActive(actions.MoveLeft) {
+	// 	l.player.Velocity[0] -= actions.MovementSpeed
+	// }
+	// if input.IsActive(actions.MoveRight) {
+	// 	l.player.Velocity[0] += actions.MovementSpeed
+	// }
+	// if jump := input.GetBinding[*input.KeyPressDurationBinding](actions.Jump); jump != nil {
+	// 	if l.player.CanJump() && jump.JustReleased() {
+	// 		pressure := jump.Pressure()
+	// 		l.player.Velocity[1] = actions.JumpVelocity * float32(pressure)
+	// 		l.player.OnGround = false
+	// 	}
+	// }
 }
 
 func (l *Level) FixedUpdate(dt float64) {
 	minX, minY, maxX, maxY := l.camera.Viewport()
-	l.world.Update(dt, minX, minY, maxX, maxY)
+	l.physics.Update(dt, minX, minY, maxX, maxY)
 }
 
 func (l *Level) LateUpdate(dt float64) {
-	l.camera.X = l.player.X + l.player.Width/2
-	l.camera.Y = l.player.Y + l.player.Height/2
-	l.player.Data.X = l.player.X
-	l.player.Data.Y = l.player.Y
+	minX, minY, maxX, maxY := physics.CalculateAABB(
+		components.GetTransform(l.player),
+		components.GetBounds(l.player),
+	)
+	l.camera.X = minX + (maxX-minX)/2
+	l.camera.Y = minY + (maxY-minY)/2
 	l.clampCamera()
 }
 
@@ -127,20 +119,23 @@ func (l *Level) Draw(screen *ebiten.Image) {
 		for tiles := itr.Next(); tiles != nil; tiles = itr.Next() {
 			l.DrawTileBatch(screen, tiles, mat)
 		}
-		l.DrawTile(&l.player.Data, screen, mat)
+		// l.DrawTile(&l.player.Data, screen, mat)
 	}
 
 	if debug.DrawCollisionCells {
-		l.DrawCollisionCells(screen, mat, l.world.QueryStaticCells(l.camera.Viewport()), color.RGBA{R: 255, A: 255})
-		l.DrawCollisionCells(screen, mat, l.world.QueryBodyCells(l.camera.Viewport()), color.RGBA{G: 255, A: 255})
+		l.DrawCollisionCells(screen, mat, l.physics.QueryStaticCells(l.camera.Viewport()), color.RGBA{R: 255, A: 255})
+		l.DrawCollisionCells(screen, mat, l.physics.QueryBodyCells(l.camera.Viewport()), color.RGBA{G: 255, A: 255})
 	}
 
 	if debug.DrawPotentialCollisions {
-		l.DrawPotentialCollisions(screen, mat, l.world.QueryStatic(l.camera.Viewport()), color.RGBA{B: 255, A: 255})
-		l.DrawPotentialCollisions(screen, mat, l.world.QueryBody(l.player.AABB()), color.RGBA{R: 255, G: 255, A: 255})
+		l.DrawPotentialCollisions(screen, mat, l.physics.QueryStatic(l.camera.Viewport()), color.RGBA{B: 255, A: 255})
+		l.DrawPotentialCollisions(screen, mat, l.physics.QueryBody(physics.CalculateAABB(
+			components.GetTransform(l.player),
+			components.GetBounds(l.player)),
+		), color.RGBA{R: 255, G: 255, A: 255})
 	}
 
-	ebitenutil.DebugPrint(screen, fmt.Sprintf("Vel: %.2f, %.2f\nOnGround: %v", l.player.Velocity[0], l.player.Velocity[1], l.player.OnGround))
+	// ebitenutil.DebugPrint(screen, fmt.Sprintf("Vel: %.2f, %.2f\nOnGround: %v", l.player.Velocity[0], l.player.Velocity[1], l.player.OnGround))
 }
 
 func (l *Level) DrawTileBatch(screen *ebiten.Image, tiles []tilemap.Data, mat ebiten.GeoM) {
@@ -216,14 +211,18 @@ func (l *Level) DrawCollisionCells(screen *ebiten.Image, mat ebiten.GeoM, cells 
 	}, op)
 }
 
-func (l *Level) DrawPotentialCollisions(screen *ebiten.Image, mat ebiten.GeoM, colliders []physics.Collider, col color.RGBA) {
+func (l *Level) DrawPotentialCollisions(screen *ebiten.Image, mat ebiten.GeoM, entities []entity.Entity, col color.RGBA) {
 	path := vector.Path{}
 
-	for i := range colliders {
-		c := colliders[i]
-		switch c.(type) {
-		case *physics.BoxCollider:
-			cMinX, cMinY, cMaxX, cMaxY := c.AABB()
+	for i := range entities {
+		e := entities[i]
+		c := components.GetCollision(e)
+		b := components.GetBounds(e)
+		t := components.GetTransform(e)
+
+		switch c.Shape {
+		case components.CollisionShapeBox:
+			cMinX, cMinY, cMaxX, cMaxY := physics.CalculateAABB(t, b)
 
 			minX, minY := mat.Apply(float64(cMinX), float64(cMinY))
 			maxX, maxY := mat.Apply(float64(cMaxX), float64(cMaxY))
@@ -234,10 +233,12 @@ func (l *Level) DrawPotentialCollisions(screen *ebiten.Image, mat ebiten.GeoM, c
 			path.LineTo(float32(minX), float32(maxY))
 			path.LineTo(float32(minX), float32(minY))
 
-		case *physics.TriangleCollider:
-			tri := c.(*physics.TriangleCollider)
+		case components.CollisionShapeTriangle:
+			tri := components.GetTriangleBody(e).Triangle
+			px, py := t.Position()
 			for i := 0; i < 3; i++ {
 				x, y := tri.GetVertex(i)
+				x, y = x+px, y+py
 				x64, y64 := mat.Apply(float64(x), float64(y))
 				if i == 0 {
 					path.MoveTo(float32(x64), float32(y64))
@@ -245,20 +246,7 @@ func (l *Level) DrawPotentialCollisions(screen *ebiten.Image, mat ebiten.GeoM, c
 					path.LineTo(float32(x64), float32(y64))
 				}
 			}
-			// Close the triangle
-			x, y := tri.GetVertex(0)
-			x64, y64 := mat.Apply(float64(x), float64(y))
-			path.LineTo(float32(x64), float32(y64))
-
-			minX, minY, maxX, maxY := tri.AABB()
-			centerX := (minX + maxX) / 2
-			centerY := (minY + maxY) / 2
-			nX, nY := tri.SlopeNormal()[0], tri.SlopeNormal()[1]
-			endX64, endY64 := mat.Apply(float64(centerX+nX*5), float64(centerY+nY*5))
-			startX64, startY64 := mat.Apply(float64(centerX), float64(centerY))
-
-			path.MoveTo(float32(startX64), float32(startY64))
-			path.LineTo(float32(endX64), float32(endY64))
+			path.Close()
 		}
 	}
 

@@ -88,8 +88,8 @@ func (t *Triangle) ContainsPoint(px, py float32) bool {
 }
 
 func (t *Triangle) IntersectsAABB(minX, minY, maxX, maxY float32) bool {
-	tMinX, tMinY := t.Min()
-	tMaxX, tMaxY := t.Max()
+	tMinX, tMinY := t.X+t.minX, t.Y+t.minY
+	tMaxX, tMaxY := t.X+t.maxX, t.Y+t.maxY
 
 	if t.X+tMaxX < minX || t.X+tMinX > maxX || t.Y+tMaxY < minY || t.Y+tMinY > maxY {
 		return false
@@ -111,18 +111,6 @@ func (t *Triangle) IntersectsAABB(minX, minY, maxX, maxY float32) bool {
 
 	return false
 }
-
-// ========== AABB interface ==========
-
-func (t *Triangle) Min() (x, y float32) {
-	return t.X + t.minX, t.Y + t.minY
-}
-
-func (t *Triangle) Max() (x, y float32) {
-	return t.X + t.maxX, t.Y + t.maxY
-}
-
-// ========== AABB interface ==========
 
 func TriangleArea(p0, p1, p2 [2]float32) float32 {
 	return 0.5 * (p0[0]*(p1[1]-p2[1]) + p1[0]*(p2[1]-p0[1]) + p2[0]*(p0[1]-p1[1]))

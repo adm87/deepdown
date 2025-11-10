@@ -1,11 +1,12 @@
 package level
 
 import (
+	"log/slog"
 	"strconv"
 
-	"github.com/adm87/deepdown/scripts/physics"
+	"github.com/adm87/deepdown/scripts/components"
+	"github.com/adm87/deepdown/scripts/ecs/entity"
 	"github.com/adm87/tiled"
-	"github.com/adm87/tiled/tilemap"
 )
 
 func (l *Level) BuildStaticCollision(collisionGroup *tiled.ObjectGroup) error {
@@ -17,27 +18,34 @@ func (l *Level) BuildStaticCollision(collisionGroup *tiled.ObjectGroup) error {
 	for i := range collisionGroup.Objects {
 		obj := &collisionGroup.Objects[i]
 
-		var collider physics.Collider
-
-		if len(obj.Polygon.Points) > 0 {
-			collider = physics.GetTriangleCollider(obj.X, obj.Y, [6]float32(obj.Polygon.Points))
-		} else {
-			collider = physics.GetBoxCollider(obj.X, obj.Y, obj.Width, obj.Height)
-		}
-
-		var role physics.Role
+		var role components.CollisionRole
 		if prop := tiled.PropertyByType(obj.Properties, "CollisionRole"); prop != nil {
 			bit, err := strconv.Atoi(prop.Value)
 			if err != nil {
 				return err
 			}
-			role = physics.Role(bit >> 1)
+			role = components.CollisionRole(bit >> 1)
 		}
 
-		collider.Info().Role = role
-		collider.Info().State = physics.ColliderStateStatic
+		var actor entity.Entity
 
-		l.world.AddCollider(collider)
+		switch role {
+		case components.CollisionRoleWall:
+			actor = NewWall(l.ecs, obj.X, obj.Y, obj.Width, obj.Height)
+		case components.CollisionRoleFloor:
+			if len(obj.Polygon.Points) > 0 {
+				actor = NewSlopedFloor(l.ecs, obj.X, obj.Y, [6]float32(obj.Polygon.Points))
+			} else {
+				actor = NewFlatFloor(l.ecs, obj.X, obj.Y, obj.Width, obj.Height)
+			}
+		case components.CollisionRolePlatform:
+			actor = NewPlatform(l.ecs, obj.X, obj.Y, obj.Width, obj.Height)
+		default:
+			l.ctx.Logger().Warn("Unknown collision role for object", slog.String("name", obj.Name))
+			continue
+		}
+
+		l.physics.Add(actor)
 	}
 
 	return nil
@@ -52,24 +60,14 @@ func (l *Level) BuildPlayer(spawnGroup *tiled.ObjectGroup, tmx *tiled.Tmx) error
 	for i := range spawnGroup.Objects {
 		obj := &spawnGroup.Objects[i]
 
-		l.player = &Player{}
-		l.player.X = obj.X
-		l.player.Y = obj.Y
-		l.player.Width = obj.Width * 0.5
-		l.player.Height = obj.Height * 0.7
+		l.player = NewPlayer(l.ecs, obj.X, obj.Y, obj.Width, obj.Height)
 
-		l.player.BoxCollider = *physics.GetBoxCollider(obj.X, obj.Y, l.player.Width, l.player.Height)
-		l.player.BoxCollider.Info().State = physics.ColliderStateDynamic
-		l.player.Offset[0] = (obj.Width - l.player.Width) * 0.5
-		l.player.Offset[1] = (obj.Height - l.player.Height)
+		// data, ok := tilemap.GetTileData(obj.GID, tmx, obj.X, obj.Y)
+		// if !ok {
+		// 	l.ctx.Logger().Warn("No tile data found for player spawn")
+		// }
 
-		data, ok := tilemap.GetTileData(obj.GID, tmx, obj.X, obj.Y)
-		if !ok {
-			l.ctx.Logger().Warn("No tile data found for player spawn")
-		}
-		l.player.Data = data
-
-		l.world.AddCollider(&l.player.BoxCollider)
+		l.physics.Add(l.player)
 
 		l.ctx.Logger().Info("Player spawn created at ", obj.X, ", ", obj.Y)
 	}
