@@ -2,12 +2,12 @@ package components
 
 import (
 	"github.com/adm87/deepdown/scripts/ecs/entity"
-	"github.com/adm87/utilities/collection"
+	"github.com/adm87/utilities/sparse"
 )
 
 // =========== Bounds Component Storage ===========
 
-var boundsStorage = collection.NewSparseSet[Bounds, entity.Entity](512)
+var boundsStorage = sparse.NewSet[Bounds, entity.Entity](512)
 
 func GetBounds(e entity.Entity) *Bounds {
 	return boundsStorage.Get(e)
@@ -30,6 +30,10 @@ func GetOrAddBounds(e entity.Entity) *Bounds {
 		boundsStorage.Insert(e, Bounds{})
 	}
 	return boundsStorage.UnsafeGet(e)
+}
+
+func EachBounds(f func(e entity.Entity, b *Bounds)) {
+	boundsStorage.Each(f)
 }
 
 // =========== Bounds Component ===========

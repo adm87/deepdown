@@ -1,9 +1,13 @@
 package physics
 
 import (
+	"math"
+
 	"github.com/adm87/deepdown/scripts/components"
 	"github.com/adm87/deepdown/scripts/ecs/entity"
+	"github.com/adm87/deepdown/scripts/geom"
 	"github.com/adm87/utilities/hash"
+	"github.com/adm87/utilities/sparse"
 )
 
 const (
@@ -21,22 +25,51 @@ const (
 	VelocityDamping float32 = 0.75
 )
 
-func CalculateAABB(transfor *components.Transform, bounds *components.Bounds) (minX, minY, maxX, maxY float32) {
-	x, y := transfor.Position()
+func CalculateAABB(transform *components.Transform, bounds *components.Bounds) [4]float32 {
+	x, y := transform.Position()
+	return calculateAABB([2]float32{x, y}, bounds)
+}
+
+func calculateAABB(position [2]float32, bounds *components.Bounds) [4]float32 {
 	w, h := bounds.Size()
 	ox, oy := bounds.Offset()
+	x, y := position[0], position[1]
+	return [4]float32{x + ox, y + oy, x + ox + w, y + oy + h}
+}
 
-	minX = x + ox
-	minY = y + oy
-	maxX = minX + w
-	maxY = minY + h
-	return
+func clamp(value, min, max float32) float32 {
+	if value < min {
+		return min
+	}
+	if value > max {
+		return max
+	}
+	return value
+}
+
+func abs(v float32) float32 {
+	if v < 0 {
+		return -v
+	}
+	return v
 }
 
 type Contact struct {
+	shape  components.CollisionShape
+	isWall bool
+	depth  float32
+	normal [2]float32
+}
+
+type PhysicsState struct {
+	previousPosition [2]float32
+	nextPosition     [2]float32
+	aabb             [4]float32
 }
 
 type World struct {
+	physicsStates *sparse.Set[PhysicsState, entity.Entity]
+
 	staticGrid *hash.Grid[entity.Entity] // Static world colliders
 	bodyGrid   *hash.Grid[entity.Entity] // Dynamic and trigger body colliders
 
@@ -45,6 +78,8 @@ type World struct {
 
 func NewWorld() *World {
 	return &World{
+		physicsStates: sparse.NewSet[PhysicsState, entity.Entity](512),
+
 		staticGrid: hash.NewGrid[entity.Entity](GridCellSize, GridCellSize),
 		bodyGrid:   hash.NewGrid[entity.Entity](GridCellSize, GridCellSize),
 		contacts:   make([]Contact, 0),
@@ -58,6 +93,7 @@ func (w *World) Add(entity entity.Entity) {
 	default:
 		w.insert(entity, w.bodyGrid)
 	}
+	w.physicsStates.Insert(entity, PhysicsState{})
 }
 
 func (w *World) RemoveCollider(entity entity.Entity) {
@@ -67,277 +103,267 @@ func (w *World) RemoveCollider(entity entity.Entity) {
 	default:
 		w.bodyGrid.Remove(entity)
 	}
+	w.physicsStates.Remove(entity)
 }
 
-func (w *World) Update(dt float64, minX, minY, maxX, maxY float32) {
-	// activeBodies := w.bodyGrid.Query(minX, minY, maxX, maxY)
+func (w *World) QueryStatic(region [4]float32) []entity.Entity {
+	return w.staticGrid.Query(region[0], region[1], region[2], region[3])
 }
 
-func (w *World) QueryStatic(minX, minY, maxX, maxY float32) []entity.Entity {
-	return w.staticGrid.Query(minX, minY, maxX, maxY)
+func (w *World) QueryBody(region [4]float32) []entity.Entity {
+	return w.bodyGrid.Query(region[0], region[1], region[2], region[3])
 }
 
-func (w *World) QueryBody(minX, minY, maxX, maxY float32) []entity.Entity {
-	return w.bodyGrid.Query(minX, minY, maxX, maxY)
+func (w *World) QueryStaticCells(region [4]float32) []uint64 {
+	return w.staticGrid.QueryCells(region[0], region[1], region[2], region[3])
 }
 
-func (w *World) QueryStaticCells(minX, minY, maxX, maxY float32) []uint64 {
-	return w.staticGrid.QueryCells(minX, minY, maxX, maxY)
+func (w *World) QueryBodyCells(region [4]float32) []uint64 {
+	return w.bodyGrid.QueryCells(region[0], region[1], region[2], region[3])
 }
 
-func (w *World) QueryBodyCells(minX, minY, maxX, maxY float32) []uint64 {
-	return w.bodyGrid.QueryCells(minX, minY, maxX, maxY)
+func (w *World) Update(dt float64, region [4]float32) {
+	components.EachPhysics(func(e entity.Entity, phys *components.Physics) {
+		if ctype := components.GetCollision(e); ctype.Type == components.CollisionTypeIgnore {
+			return
+		}
+
+		transform := components.GetTransform(e)
+		bounds := components.GetBounds(e)
+
+		x, y := transform.Position()
+		aabb := calculateAABB([2]float32{x, y}, bounds)
+
+		phys.Awake = aabb[2] >= region[0] && aabb[0] <= region[2] && aabb[3] >= region[1] && aabb[1] <= region[3]
+		if !phys.Awake {
+			return
+		}
+
+		state := w.physicsStates.Get(e)
+		state.previousPosition = [2]float32{x, y}
+
+		if phys.Gravity != 0 {
+			velY := clamp(phys.Velocity[1]+Gravity*float32(dt), MaxVelocityRiseSpeed, MaxVelocityFallSpeed)
+
+			_, grounded := w.isGrounded(e, components.GetCollision(e).Layer, aabb, velY*float32(dt))
+			phys.OnGround = grounded
+
+			if !phys.OnGround {
+				phys.Velocity[1] = velY
+			}
+		}
+
+		if abs(phys.Velocity[0]) < float32(MinimumVelocityThreshold) {
+			phys.Velocity[0] = 0
+		}
+		if abs(phys.Velocity[1]) < float32(MinimumVelocityThreshold) {
+			phys.Velocity[1] = 0
+		}
+
+		state.nextPosition[0] = x + phys.Velocity[0]*float32(dt)
+		state.nextPosition[1] = y + phys.Velocity[1]*float32(dt)
+
+		phys.Velocity[0] *= VelocityDamping
+
+		state.aabb = calculateAABB(state.nextPosition, bounds)
+
+		collision := components.GetCollision(e)
+
+		if w.checkCollisions(e, collision.Shape, collision.Layer, state,
+			w.staticGrid.Query(state.aabb[0], state.aabb[1], state.aabb[2], state.aabb[3])) {
+			w.resolveStaticCollisions(state, phys, bounds)
+		}
+		if w.checkCollisions(e, collision.Shape, collision.Layer, state,
+			w.bodyGrid.Query(state.aabb[0], state.aabb[1], state.aabb[2], state.aabb[3])) {
+			w.resolveCollisions(state, phys)
+		}
+
+		state.aabb = calculateAABB(state.nextPosition, bounds)
+		transform.SetPosition(state.nextPosition[0], state.nextPosition[1])
+
+		if state.nextPosition == [2]float32{x, y} {
+			return
+		}
+
+		w.bodyGrid.Remove(e)
+		w.insert(e, w.bodyGrid)
+	})
 }
 
-func (w *World) insert(entity entity.Entity, grid *hash.Grid[entity.Entity]) {
-	minX, minY, maxX, maxY := CalculateAABB(
-		components.GetTransform(entity),
-		components.GetBounds(entity),
-	)
-	grid.Insert(entity, minX, minY, maxX, maxY, hash.NoGridPadding)
-}
-
-func (w *World) preupdate(dt float64, activeBodies []entity.Entity) {
-	// for i := range activeBodies {
-	// 	info := activeBodies[i].Info()
-
-	// 	// Apply gravity and clamp vertical velocity
-	// 	velY := clamp(info.Velocity[1]+Gravity*float32(dt), MaxVelocityRiseSpeed, MaxVelocityFallSpeed)
-
-	// 	// Check ground state
-	// 	info.OnGround = w.isGrounded(activeBodies[i], info, velY*float32(dt))
-
-	// 	// Update coyote time tracking
-	// 	if info.OnGround {
-	// 		info.timeSinceLeftGround = 0
-	// 	} else {
-	// 		info.timeSinceLeftGround += float32(dt)
-	// 	}
-
-	// 	// Apply vertical velocity only when airborne
-	// 	if !info.OnGround {
-	// 		info.Velocity[1] = velY
-	// 	}
-
-	// 	// Zero out negligible velocities
-	// 	if math.Abs(float64(info.Velocity[0])) < MinimumVelocityThreshold {
-	// 		info.Velocity[0] = 0
-	// 	}
-	// 	if math.Abs(float64(info.Velocity[1])) < MinimumVelocityThreshold {
-	// 		info.Velocity[1] = 0
-	// 	}
-
-	// 	// Calculate next position
-	// 	x, y := activeBodies[i].Position()
-	// 	if info.Velocity[0] == 0 && info.Velocity[1] == 0 {
-	// 		info.nextPosition[0] = x
-	// 		info.nextPosition[1] = y
-	// 		continue
-	// 	}
-
-	// 	info.nextPosition[0] = x + info.Velocity[0]*float32(dt)
-	// 	info.nextPosition[1] = y + info.Velocity[1]*float32(dt)
-
-	// 	// Apply horizontal damping
-	// 	info.Velocity[0] *= VelocityDamping
-	// }
-}
-
-func (w *World) postupdate(activeBodies []entity.Entity) {
-	// for i := range activeBodies {
-	// 	info := activeBodies[i].Info()
-
-	// 	x, y := activeBodies[i].Position()
-	// 	nX, nY := info.nextPosition[0], info.nextPosition[1]
-
-	// 	if nX == x && nY == y {
-	// 		continue
-	// 	}
-
-	// 	info.prevPosition[0] = x
-	// 	info.prevPosition[1] = y
-
-	// 	activeBodies[i].SetPosition(nX, nY)
-
-	// 	w.bodyGrid.Remove(activeBodies[i])
-	// 	w.insert(activeBodies[i], w.bodyGrid)
-	// }
-}
-
-func (w *World) handleCollisions(activeBodies []entity.Entity) {
+func (w *World) checkCollisions(e entity.Entity, shape components.CollisionShape, layer components.CollisionLayer, state *PhysicsState, others []entity.Entity) bool {
 	w.contacts = w.contacts[:0]
-	for i := range activeBodies {
-		id := activeBodies[i]
 
-		bounds := components.GetBounds(id)
-		collision := components.GetCollision(id)
-		transform := components.GetTransform(id)
-		if collision.Mode == components.CollisionModeIgnore {
+	for _, other := range others {
+		if other.Equals(e) {
 			continue
 		}
 
-		// ========== Check static collisions ==========
-
-		others := w.staticGrid.Query(CalculateAABB(transform, bounds))
-		for j := range others {
-			otherId := others[j]
-
-			otherCollision := components.GetCollision(otherId)
-
-			if otherCollision.Mode == components.CollisionModeIgnore || others[j].Equals(activeBodies[i]) {
-				continue
-			}
-
-			if !components.ShouldCollide(collision.Layer, otherCollision.Layer) {
-				continue
-			}
-
-			// if contact, overlaps := CheckOverlap(activeBodies[i], others[j]); overlaps {
-			// 	info.collisions = append(info.collisions, contact)
-			// }
+		collision := components.GetCollision(other)
+		if collision.Type == components.CollisionTypeIgnore || !components.ShouldCollide(layer, collision.Layer) {
+			continue
 		}
 
-		// w.resolveStaticCollisions(info)
+		x, y := components.GetTransform(other).Position()
+		aabb := calculateAABB([2]float32{x, y}, components.GetBounds(other))
+		if state.aabb[2] <= aabb[0] || state.aabb[0] >= aabb[2] || state.aabb[3] <= aabb[1] || state.aabb[1] >= aabb[3] {
+			continue
+		}
 
-		// ========== Check body collisions ==========
+		var contact Contact
+		var overlaps bool
 
-		// TASK: Implement dynamic body collision detection and event dispatching
+		switch shape {
+		case components.CollisionShapeBox:
+			if collision.Shape == components.CollisionShapeBox {
+				contact, overlaps = checkAABBvsAABB(state.aabb, aabb)
+			} else if collision.Shape == components.CollisionShapeTriangle {
+				contact, overlaps = checkAABBvsTriangle(state.aabb, x, y, components.GetTriangleBody(other))
+			}
+
+		case components.CollisionShapeTriangle:
+			triA := components.GetTriangleBody(e)
+			x, y := components.GetTransform(e).Position()
+			if collision.Shape == components.CollisionShapeBox {
+				contact, overlaps = checkAABBvsTriangle(aabb, x, y, triA)
+			} else if collision.Shape == components.CollisionShapeTriangle {
+				contact, overlaps = checkTriangleVsTriangle(triA, components.GetTriangleBody(other))
+			}
+		}
+
+		if overlaps {
+			contact.shape = collision.Shape
+			contact.isWall = collision.Role&components.CollisionRoleWall != 0
+			w.contacts = append(w.contacts, contact)
+		}
+	}
+	return len(w.contacts) > 0
+}
+
+func (w *World) isGrounded(id entity.Entity, layer components.CollisionLayer, aabb [4]float32, travelled float32) (float32, bool) {
+	centerX := (aabb[0] + aabb[2]) / 2
+	distance := max(travelled, GroundCheckDistance)
+
+	for _, other := range w.staticGrid.Query(aabb[0], aabb[1], aabb[2], aabb[3]+distance) {
+		if other.Equals(id) {
+			continue
+		}
+
+		collision := components.GetCollision(other)
+		if collision.Type == components.CollisionTypeIgnore || !components.ShouldCollide(layer, collision.Layer) {
+			continue
+		}
+
+		if collision.Role&components.CollisionRoleFloor == 0 {
+			continue
+		}
+
+		x, y := components.GetTransform(other).Position()
+		otherAABB := calculateAABB([2]float32{x, y}, components.GetBounds(other))
+
+		var surfaceY float32
+		switch collision.Shape {
+		case components.CollisionShapeBox:
+			if aabb[2] <= otherAABB[0] || aabb[0] >= otherAABB[2] {
+				continue
+			}
+			surfaceY = otherAABB[1]
+
+		case components.CollisionShapeTriangle:
+			if centerX < otherAABB[0] || centerX > otherAABB[2] {
+				continue
+			}
+			tri := *components.GetTriangleBody(other)
+			tri.X, tri.Y = x, y
+			y, found := geom.FindTriangleSurfaceAt(centerX, &tri)
+			if !found {
+				continue
+			}
+			surfaceY = y
+
+		default:
+			continue
+		}
+
+		distanceToSurface := surfaceY - aabb[3]
+		if distanceToSurface >= -GroundCheckTolerance && distanceToSurface <= distance {
+			return surfaceY, true
+		}
+	}
+	return 0, false
+}
+
+func (w *World) resolveStaticCollisions(state *PhysicsState, phys *components.Physics, bounds *components.Bounds) {
+	var horizontal, vertical, slope *Contact
+
+	for i := range w.contacts {
+		contact := &w.contacts[i]
+
+		switch contact.shape {
+		case components.CollisionShapeTriangle:
+			if slope == nil || contact.depth > slope.depth {
+				slope = contact
+			}
+		default:
+			if math.Abs(float64(contact.normal[1])) > math.Abs(float64(contact.normal[0])) {
+				if vertical == nil || contact.depth > vertical.depth {
+					vertical = contact
+				}
+			} else {
+				if horizontal == nil || contact.depth > horizontal.depth {
+					horizontal = contact
+				}
+			}
+		}
+	}
+
+	if slope != nil {
+		w.resolveStaticSlopeCollision(state, phys, slope)
+	} else if vertical != nil {
+		w.resolveStaticVerticalCollision(state, phys, vertical)
+	}
+
+	if horizontal != nil {
+		if slope != nil {
+			if horizontal.isWall {
+				w.resolveStaticHorizontalCollision(state, phys, horizontal)
+			}
+		} else {
+			w.resolveStaticHorizontalCollision(state, phys, horizontal)
+		}
 	}
 }
 
-// func (w *World) isGrounded(collider Collider, info *ColliderInfo, travelled float32) bool {
-// 	minX, minY, maxX, maxY := collider.AABB()
-// 	centerX := (minX + maxX) / 2
-// 	queryDistance := max(travelled, GroundCheckDistance)
+func (w *World) resolveStaticSlopeCollision(state *PhysicsState, phys *components.Physics, contact *Contact) {
+	state.nextPosition[0] += contact.normal[0] * contact.depth
+	state.nextPosition[1] += contact.normal[1] * contact.depth
 
-// 	others := w.staticGrid.Query(minX, minY, maxX, maxY+queryDistance)
-// 	for _, other := range others {
-// 		otherInfo := other.Info()
-// 		if otherInfo.Mode == CollisionModeIgnore || info.id == otherInfo.id {
-// 			continue
-// 		}
+	dotProduct := phys.Velocity[0]*contact.normal[0] + phys.Velocity[1]*contact.normal[1]
+	if dotProduct < 0 {
+		phys.Velocity[1] -= contact.normal[1] * dotProduct
+	}
 
-// 		if !ShouldCollide(info.Layer, otherInfo.Layer) || !otherInfo.IsFloor() {
-// 			continue
-// 		}
+	phys.OnGround = contact.normal[1] < 0
+}
 
-// 		var surfaceY float32
-// 		switch o := other.(type) {
-// 		case *BoxCollider:
-// 			// Check horizontal overlap for box colliders
-// 			oMinX, oMinY, oMaxX, _ := o.AABB()
-// 			if maxX <= oMinX || minX >= oMaxX {
-// 				continue
-// 			}
-// 			surfaceY = oMinY
+func (w *World) resolveStaticVerticalCollision(state *PhysicsState, phys *components.Physics, contact *Contact) {
+	state.nextPosition[1] += contact.normal[1] * contact.depth
+	if (contact.normal[1] < 0 && phys.Velocity[1] > 0) || (contact.normal[1] > 0 && phys.Velocity[1] < 0) {
+		phys.Velocity[1] = 0
+	}
+}
 
-// 		case *TriangleCollider:
-// 			// Check if center point is within triangle bounds
-// 			oMinX, _, oMaxX, _ := o.AABB()
-// 			if centerX < oMinX || centerX > oMaxX {
-// 				continue
-// 			}
-// 			y, found := geom.FindTriangleSurfaceAt(centerX, &o.Triangle)
-// 			if !found {
-// 				continue
-// 			}
-// 			surfaceY = y
+func (w *World) resolveStaticHorizontalCollision(state *PhysicsState, phys *components.Physics, contact *Contact) {
+	state.nextPosition[0] += contact.normal[0] * contact.depth
+	if (contact.normal[0] < 0 && phys.Velocity[0] > 0) || (contact.normal[0] > 0 && phys.Velocity[0] < 0) {
+		phys.Velocity[0] = 0
+	}
+}
 
-// 		default:
-// 			continue
-// 		}
+func (w *World) resolveCollisions(state *PhysicsState, phys *components.Physics) {
 
-// 		// Check if within ground detection range
-// 		distance := surfaceY - maxY
-// 		if distance >= -GroundCheckTolerance && distance <= queryDistance {
-// 			return true
-// 		}
-// 	}
-// 	return false
-// }
+}
 
-// func (w *World) resolveStaticCollisions(info *ColliderInfo) {
-// 	if len(info.collisions) == 0 {
-// 		return
-// 	}
-
-// 	var horizontal *Collision
-// 	var vertical *Collision
-// 	var slope *Collision
-
-// 	for i := range info.collisions {
-// 		contact := &info.collisions[i]
-
-// 		switch contact.other.(type) {
-// 		case *TriangleCollider:
-// 			if slope == nil || contact.Depth > slope.Depth {
-// 				slope = contact
-// 			}
-// 		default:
-// 			if math.Abs(float64(contact.Normal[1])) > math.Abs(float64(contact.Normal[0])) {
-// 				if vertical == nil || contact.Depth > vertical.Depth {
-// 					vertical = contact
-// 				}
-// 			} else {
-// 				if horizontal == nil || contact.Depth > horizontal.Depth {
-// 					horizontal = contact
-// 				}
-// 			}
-// 		}
-// 	}
-
-// 	if slope != nil {
-// 		w.resolveStaticSlopeCollision(info, slope)
-// 	} else if vertical != nil {
-// 		w.resolveStaticVerticalCollision(info, vertical)
-// 	}
-
-// 	if horizontal != nil {
-// 		otherInfo := horizontal.other.Info()
-// 		if slope != nil {
-// 			if otherInfo.IsWall() {
-// 				w.resolveStaticHorizontalCollision(info, horizontal)
-// 			}
-// 		} else {
-// 			w.resolveStaticHorizontalCollision(info, horizontal)
-// 		}
-// 	}
-// }
-
-// func (w *World) resolveStaticSlopeCollision(info *ColliderInfo, col *Collision) {
-// 	// Move out of collision along slope normal
-// 	info.nextPosition[0] += col.Normal[0] * col.Depth
-// 	info.nextPosition[1] += col.Normal[1] * col.Depth
-
-// 	if col.Normal[1] < 0 {
-// 		// Colliding with ceiling - stop upward velocity
-// 		info.Velocity[1] = 0
-// 	} else {
-// 		// Redirect velocity along slope surface
-// 		dotProduct := info.Velocity[0]*col.Normal[0] + info.Velocity[1]*col.Normal[1]
-// 		if dotProduct < 0 {
-// 			info.Velocity[0] -= col.Normal[0] * dotProduct
-// 			info.Velocity[1] -= col.Normal[1] * dotProduct
-// 		}
-// 	}
-// }
-
-// func (w *World) resolveStaticVerticalCollision(info *ColliderInfo, col *Collision) {
-// 	// Move out of collision vertically
-// 	info.nextPosition[1] += col.Normal[1] * col.Depth
-
-// 	// Stop velocity if moving into the collision
-// 	if (col.Normal[1] < 0 && info.Velocity[1] > 0) || (col.Normal[1] > 0 && info.Velocity[1] < 0) {
-// 		info.Velocity[1] = 0
-// 	}
-// }
-
-// func (w *World) resolveStaticHorizontalCollision(info *ColliderInfo, col *Collision) {
-// 	// Move out of collision horizontally
-// 	info.nextPosition[0] += col.Normal[0] * col.Depth
-
-// 	// Stop velocity if moving into the collision
-// 	if (col.Normal[0] < 0 && info.Velocity[0] > 0) || (col.Normal[0] > 0 && info.Velocity[0] < 0) {
-// 		info.Velocity[0] = 0
-// 	}
-// }
+func (w *World) insert(entity entity.Entity, grid *hash.Grid[entity.Entity]) {
+	aabb := CalculateAABB(components.GetTransform(entity), components.GetBounds(entity))
+	grid.Insert(entity, aabb[0], aabb[1], aabb[2], aabb[3], hash.NoGridPadding)
+}

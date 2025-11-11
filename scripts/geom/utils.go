@@ -74,8 +74,8 @@ func FindTriangleSurfaceAt(x float32, triangle *Triangle) (surfaceY float32, fou
 		x1, y1 := triangle.X+points[i*2], triangle.Y+points[i*2+1]
 		x2, y2 := triangle.X+points[((i+1)%3)*2], triangle.Y+points[((i+1)%3)*2+1]
 
-		// Skip vertical or horizontal edges
-		if abs(x2-x1) < 0.1 || abs(y2-y1) < 0.1 {
+		// Skip vertical edges (no horizontal span)
+		if abs(x2-x1) < 0.1 {
 			continue
 		}
 

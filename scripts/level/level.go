@@ -1,6 +1,7 @@
 package level
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 	"math"
@@ -12,11 +13,14 @@ import (
 	"github.com/adm87/deepdown/scripts/deepdown"
 	"github.com/adm87/deepdown/scripts/ecs"
 	"github.com/adm87/deepdown/scripts/ecs/entity"
+	"github.com/adm87/deepdown/scripts/input"
+	"github.com/adm87/deepdown/scripts/input/actions"
 	"github.com/adm87/deepdown/scripts/physics"
 	"github.com/adm87/tiled"
 	"github.com/adm87/tiled/tilemap"
 	"github.com/adm87/utilities/hash"
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 )
 
@@ -76,33 +80,38 @@ func (l *Level) SetTmx(tmx *tiled.Tmx) error {
 }
 
 func (l *Level) Update(dts float64) {
-	// if input.IsActive(actions.MoveLeft) {
-	// 	l.player.Velocity[0] -= actions.MovementSpeed
-	// }
-	// if input.IsActive(actions.MoveRight) {
-	// 	l.player.Velocity[0] += actions.MovementSpeed
-	// }
-	// if jump := input.GetBinding[*input.KeyPressDurationBinding](actions.Jump); jump != nil {
-	// 	if l.player.CanJump() && jump.JustReleased() {
-	// 		pressure := jump.Pressure()
-	// 		l.player.Velocity[1] = actions.JumpVelocity * float32(pressure)
-	// 		l.player.OnGround = false
-	// 	}
-	// }
+	phys := components.GetPhysics(l.player)
+
+	if input.IsActive(actions.MoveLeft) {
+		phys.Velocity[0] -= actions.MovementSpeed
+	}
+	if input.IsActive(actions.MoveRight) {
+		phys.Velocity[0] += actions.MovementSpeed
+	}
+	if jump := input.GetBinding[*input.KeyPressDurationBinding](actions.Jump); jump != nil {
+		if phys.OnGround && jump.JustReleased() {
+			pressure := jump.Pressure()
+			phys.Velocity[1] = actions.JumpVelocity * float32(pressure)
+			// phys.OnGround = false
+		}
+	}
+	l.ecs.Update(float32(dts))
 }
 
 func (l *Level) FixedUpdate(dt float64) {
-	minX, minY, maxX, maxY := l.camera.Viewport()
-	l.physics.Update(dt, minX, minY, maxX, maxY)
+	l.physics.Update(dt, l.camera.Viewport())
+	l.ecs.FixedUpdate(float32(dt))
 }
 
 func (l *Level) LateUpdate(dt float64) {
-	minX, minY, maxX, maxY := physics.CalculateAABB(
+	l.ecs.LateUpdate(float32(dt))
+
+	aabb := physics.CalculateAABB(
 		components.GetTransform(l.player),
 		components.GetBounds(l.player),
 	)
-	l.camera.X = minX + (maxX-minX)/2
-	l.camera.Y = minY + (maxY-minY)/2
+	l.camera.X = aabb[0] + (aabb[2]-aabb[0])/2
+	l.camera.Y = aabb[1] + (aabb[3]-aabb[1])/2
 	l.clampCamera()
 }
 
@@ -135,7 +144,9 @@ func (l *Level) Draw(screen *ebiten.Image) {
 		), color.RGBA{R: 255, G: 255, A: 255})
 	}
 
-	// ebitenutil.DebugPrint(screen, fmt.Sprintf("Vel: %.2f, %.2f\nOnGround: %v", l.player.Velocity[0], l.player.Velocity[1], l.player.OnGround))
+	phys := components.GetPhysics(l.player)
+	ebitenutil.DebugPrint(screen, fmt.Sprintf("Vel: %.2f, %.2f\nOnGround: %v", phys.Velocity[0], phys.Velocity[1], phys.OnGround))
+	// ebitenutil.DebugPrint(screen, fmt.Sprintf("FPS: %.2f", ebiten.ActualFPS()))
 }
 
 func (l *Level) DrawTileBatch(screen *ebiten.Image, tiles []tilemap.Data, mat ebiten.GeoM) {
@@ -222,10 +233,10 @@ func (l *Level) DrawPotentialCollisions(screen *ebiten.Image, mat ebiten.GeoM, e
 
 		switch c.Shape {
 		case components.CollisionShapeBox:
-			cMinX, cMinY, cMaxX, cMaxY := physics.CalculateAABB(t, b)
+			aabb := physics.CalculateAABB(t, b)
 
-			minX, minY := mat.Apply(float64(cMinX), float64(cMinY))
-			maxX, maxY := mat.Apply(float64(cMaxX), float64(cMaxY))
+			minX, minY := mat.Apply(float64(aabb[0]), float64(aabb[1]))
+			maxX, maxY := mat.Apply(float64(aabb[2]), float64(aabb[3]))
 
 			path.MoveTo(float32(minX), float32(minY))
 			path.LineTo(float32(maxX), float32(minY))
@@ -234,7 +245,7 @@ func (l *Level) DrawPotentialCollisions(screen *ebiten.Image, mat ebiten.GeoM, e
 			path.LineTo(float32(minX), float32(minY))
 
 		case components.CollisionShapeTriangle:
-			tri := components.GetTriangleBody(e).Triangle
+			tri := components.GetTriangleBody(e)
 			px, py := t.Position()
 			for i := 0; i < 3; i++ {
 				x, y := tri.GetVertex(i)

@@ -27,25 +27,25 @@ func (l *Level) BuildStaticCollision(collisionGroup *tiled.ObjectGroup) error {
 			role = components.CollisionRole(bit >> 1)
 		}
 
-		var actor entity.Entity
+		var e entity.Entity
 
 		switch role {
 		case components.CollisionRoleWall:
-			actor = NewWall(l.ecs, obj.X, obj.Y, obj.Width, obj.Height)
+			e = NewWall(l.ecs, obj.X, obj.Y, obj.Width, obj.Height)
 		case components.CollisionRoleFloor:
 			if len(obj.Polygon.Points) > 0 {
-				actor = NewSlopedFloor(l.ecs, obj.X, obj.Y, [6]float32(obj.Polygon.Points))
+				e = NewSlopedFloor(l.ecs, obj.X, obj.Y, [6]float32(obj.Polygon.Points))
 			} else {
-				actor = NewFlatFloor(l.ecs, obj.X, obj.Y, obj.Width, obj.Height)
+				e = NewFlatFloor(l.ecs, obj.X, obj.Y, obj.Width, obj.Height)
 			}
 		case components.CollisionRolePlatform:
-			actor = NewPlatform(l.ecs, obj.X, obj.Y, obj.Width, obj.Height)
+			e = NewPlatform(l.ecs, obj.X, obj.Y, obj.Width, obj.Height)
 		default:
 			l.ctx.Logger().Warn("Unknown collision role for object", slog.String("name", obj.Name))
 			continue
 		}
 
-		l.physics.Add(actor)
+		l.physics.Add(e)
 	}
 
 	return nil

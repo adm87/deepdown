@@ -3,17 +3,19 @@ package components
 import (
 	"github.com/adm87/deepdown/scripts/ecs/entity"
 	"github.com/adm87/deepdown/scripts/geom"
-	"github.com/adm87/utilities/collection"
+	"github.com/adm87/utilities/sparse"
 )
 
 // =========== Body Component Storage ===========
 
 var (
-	rectangleBodyStorage = collection.NewSparseSet[RectangleBody, entity.Entity](512)
-	triangleBodyStorage  = collection.NewSparseSet[TriangleBody, entity.Entity](512)
+	rectangleBodyStorage = sparse.NewSet[geom.Rectangle, entity.Entity](512)
+	triangleBodyStorage  = sparse.NewSet[geom.Triangle, entity.Entity](512)
 )
 
-func GetRectangleBody(e entity.Entity) *RectangleBody {
+// =========== Rectangle Body Component ===========
+
+func GetRectangleBody(e entity.Entity) *geom.Rectangle {
 	return rectangleBodyStorage.Get(e)
 }
 
@@ -21,7 +23,7 @@ func HasRectangleBody(e entity.Entity) bool {
 	return rectangleBodyStorage.Has(e)
 }
 
-func AddRectangleBody(e entity.Entity, b RectangleBody) {
+func AddRectangleBody(e entity.Entity, b geom.Rectangle) {
 	rectangleBodyStorage.Insert(e, b)
 }
 
@@ -29,14 +31,20 @@ func RemoveRectangleBody(e entity.Entity) {
 	rectangleBodyStorage.Remove(e)
 }
 
-func GetOrAddRectangleBody(e entity.Entity) *RectangleBody {
+func GetOrAddRectangleBody(e entity.Entity) *geom.Rectangle {
 	if !rectangleBodyStorage.Has(e) {
-		rectangleBodyStorage.Insert(e, RectangleBody{})
+		rectangleBodyStorage.Insert(e, geom.Rectangle{})
 	}
 	return rectangleBodyStorage.UnsafeGet(e)
 }
 
-func GetTriangleBody(e entity.Entity) *TriangleBody {
+func EachRectangleBody(f func(e entity.Entity, b *geom.Rectangle)) {
+	rectangleBodyStorage.Each(f)
+}
+
+// =========== Triangle Body Component ===========
+
+func GetTriangleBody(e entity.Entity) *geom.Triangle {
 	return triangleBodyStorage.Get(e)
 }
 
@@ -44,7 +52,7 @@ func HasTriangleBody(e entity.Entity) bool {
 	return triangleBodyStorage.Has(e)
 }
 
-func AddTriangleBody(e entity.Entity, b TriangleBody) {
+func AddTriangleBody(e entity.Entity, b geom.Triangle) {
 	triangleBodyStorage.Insert(e, b)
 }
 
@@ -52,19 +60,13 @@ func RemoveTriangleBody(e entity.Entity) {
 	triangleBodyStorage.Remove(e)
 }
 
-func GetOrAddTriangleBody(e entity.Entity) *TriangleBody {
+func GetOrAddTriangleBody(e entity.Entity) *geom.Triangle {
 	if !triangleBodyStorage.Has(e) {
-		triangleBodyStorage.Insert(e, TriangleBody{})
+		triangleBodyStorage.Insert(e, geom.Triangle{})
 	}
 	return triangleBodyStorage.UnsafeGet(e)
 }
 
-// =========== Body Component ===========
-
-type RectangleBody struct {
-	Rectangle geom.Rectangle
-}
-
-type TriangleBody struct {
-	Triangle geom.Triangle
+func EachTriangleBody(f func(e entity.Entity, b *geom.Triangle)) {
+	triangleBodyStorage.Each(f)
 }

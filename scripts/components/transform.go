@@ -2,13 +2,13 @@ package components
 
 import (
 	"github.com/adm87/deepdown/scripts/ecs/entity"
-	"github.com/adm87/utilities/collection"
+	"github.com/adm87/utilities/sparse"
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
 // =========== Transform Component Storage ===========
 
-var transformStorage = collection.NewSparseSet[Transform, entity.Entity](512)
+var transformStorage = sparse.NewSet[Transform, entity.Entity](512)
 
 func GetTransform(e entity.Entity) *Transform {
 	return transformStorage.Get(e)
@@ -31,6 +31,10 @@ func GetOrAddTransform(e entity.Entity) *Transform {
 		transformStorage.Insert(e, Transform{})
 	}
 	return transformStorage.UnsafeGet(e)
+}
+
+func EachTransform(f func(e entity.Entity, t *Transform)) {
+	transformStorage.Each(f)
 }
 
 // =========== Transform Component ===========

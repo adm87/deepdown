@@ -2,7 +2,7 @@ package components
 
 import (
 	"github.com/adm87/deepdown/scripts/ecs/entity"
-	"github.com/adm87/utilities/collection"
+	"github.com/adm87/utilities/sparse"
 )
 
 // =========== Collision Component Storage ===========
@@ -16,7 +16,7 @@ func init() {
 	}
 }
 
-var collisionStorage = collection.NewSparseSet[Collision, entity.Entity](512)
+var collisionStorage = sparse.NewSet[Collision, entity.Entity](512)
 
 func GetCollision(e entity.Entity) *Collision {
 	return collisionStorage.Get(e)
@@ -39,6 +39,10 @@ func GetOrAddCollision(e entity.Entity) *Collision {
 		collisionStorage.Insert(e, Collision{})
 	}
 	return collisionStorage.UnsafeGet(e)
+}
+
+func EachCollision(f func(e entity.Entity, c *Collision)) {
+	collisionStorage.Each(f)
 }
 
 // =========== Collision Component ==========
@@ -116,6 +120,7 @@ func ShouldCollide(layerA, layerB CollisionLayer) bool {
 type CollisionType uint8
 
 const (
+	CollisionTypeIgnore CollisionType = 0
 	CollisionTypeStatic CollisionType = iota
 	CollisionTypeDynamic
 )
@@ -136,8 +141,7 @@ const (
 type CollisionMode uint8
 
 const (
-	CollisionModeIgnore CollisionMode = iota
-	CollisionModeDiscrete
+	CollisionModeDiscrete CollisionMode = iota
 	CollisionModeContinuous
 )
 

@@ -22,12 +22,8 @@ func NewCamera(x, y, width, height float32) *Camera {
 	}
 }
 
-func (c *Camera) Viewport() (minX, minY, maxX, maxY float32) {
-	minX = c.X - c.Width/2
-	minY = c.Y - c.Height/2
-	maxX = c.X + c.Width/2
-	maxY = c.Y + c.Height/2
-	return
+func (c *Camera) Viewport() [4]float32 {
+	return [4]float32{c.X - c.Width/2, c.Y - c.Height/2, c.X + c.Width/2, c.Y + c.Height/2}
 }
 
 func (c *Camera) Matrix() ebiten.GeoM {
